@@ -64,10 +64,12 @@ func Plan(ctx context.Context, c client.Client, store *repo.Store, policy repo.P
 	if err != nil {
 		return nil, err
 	}
-	p, err := resolve.Resolve(store.Catalog(ctx, variant, policy), st, reqs)
+	cat := store.Catalog(ctx, variant, policy)
+	p, err := resolve.Resolve(cat, st, reqs)
 	if err != nil {
 		return nil, err
 	}
+	required := requiredConstraints(cat, p)
 	asked := map[string]string{}
 	for _, r := range reqs {
 		asked[r.Name] = r.Version
@@ -77,9 +79,14 @@ func Plan(ctx context.Context, c client.Client, store *repo.Store, policy repo.P
 		s := Step{Change: ch}
 		constraint, requested := asked[ch.Name]
 		s.Dependency = !requested
-		if requested && constraint != "" {
+		switch {
+		case requested && constraint != "":
 			s.Constraint = constraint
-		} else {
+		case !requested && required[ch.Name] != "":
+			// A member keeps to what the packages requiring it allow, so a
+			// new version of a meta package moves its members with it.
+			s.Constraint = required[ch.Name]
+		default:
 			s.Constraint = defaultConstraint(ch.To)
 		}
 		if repoName, versions, ok := store.Offered(ch.Name, ""); ok {
@@ -101,6 +108,30 @@ func Plan(ctx context.Context, c client.Client, store *repo.Store, policy repo.P
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Dependency && !out[j].Dependency })
 	return out, nil
+}
+
+// requiredConstraints collects, for each package, the version constraints
+// the planned releases put on it, joined so all of them hold.
+func requiredConstraints(cat resolve.Catalog, p resolve.Plan) map[string]string {
+	parts := map[string][]string{}
+	for _, ch := range p.Changes {
+		for _, r := range cat[ch.Name] {
+			if r.Version != ch.To {
+				continue
+			}
+			for _, q := range r.Requires {
+				if q.Package != "" && q.Version != "" && !q.Optional {
+					parts[q.Package] = append(parts[q.Package], q.Version)
+				}
+			}
+		}
+	}
+	out := map[string]string{}
+	for name, cs := range parts {
+		sort.Strings(cs)
+		out[name] = strings.Join(cs, ", ")
+	}
+	return out
 }
 
 // defaultConstraint follows patch releases of a version: ~X.Y.

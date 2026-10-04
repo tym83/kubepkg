@@ -447,3 +447,25 @@ func TestTopoOrderAndCycle(t *testing.T) {
 		t.Fatalf("cycle not reported: %v", err)
 	}
 }
+
+func TestMetaPackageIsReadyWhenItsMembersAre(t *testing.T) {
+	e := newEnv(t)
+	meta := mkSource("distro", "1.0.0", false)
+	meta.Spec.Variants[0].Requires = []v1alpha1.Requirement{{Package: "cert-manager", Version: "~1.16"}}
+	e.create(meta, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "distro"}})
+	e.reconcile("distro")
+	if ok, r, _ := ready(e.pkg("distro")); ok || r != v1alpha1.ReasonRequirementsNotMet {
+		t.Fatalf("a meta package must wait for its members, got ready=%v %s", ok, r)
+	}
+	e.create(mkSource("cert-manager", "1.16.2", true, "controller"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "cert-manager"}})
+	e.reconcile("cert-manager")
+	e.reconcile("distro")
+	if ok, r, msg := ready(e.pkg("distro")); !ok {
+		t.Fatalf("meta package not ready with its members installed: %s %s", r, msg)
+	}
+	for _, c := range e.be.calls {
+		if strings.Contains(c, "ns-distro") {
+			t.Fatalf("a meta package installed something itself: %v", e.be.calls)
+		}
+	}
+}

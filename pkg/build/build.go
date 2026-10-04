@@ -120,6 +120,10 @@ func Build(ctx context.Context, dir string, opts Options) (*Result, error) {
 // perhaps with another compressor, the published artifact is reused and
 // reused is true.
 func Publish(ctx context.Context, res *Result, registry string, opts source.PushOptions) (*v1alpha1.PackageSource, bool, error) {
+	if len(res.Recipe.Spec.Charts) == 0 {
+		// A meta package: only requirements, nothing to push.
+		return res.Source.DeepCopy(), false, nil
+	}
 	repo := strings.TrimSuffix(registry, "/") + "/" + res.Recipe.Metadata.Name
 	tag := fmt.Sprintf("%s-%d", strings.TrimPrefix(res.Recipe.Spec.Version, "v"), res.Recipe.Spec.Build)
 	opts.Immutable = true

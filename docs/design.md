@@ -233,6 +233,29 @@ A distribution extends builds with plugins. A source `{plugin: git, with: {...}}
 
 `spec.version` is the upstream version and `spec.build` numbers our packagings of it. Constraints match the version; of two builds of one version the higher is newer.
 
+### Meta packages: a distribution as a package
+
+A recipe with no charts builds a meta package: only requirements. A distribution is one such package listing its members and their versions:
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: mydistro
+spec:
+  version: 2.0.0
+  package:
+    variants:
+      - name: default
+        requires:
+          - {package: cilium, version: "~1.18"}
+          - {package: cert-manager, version: "~1.21"}
+          - {package: kubevirt, version: "~1.10"}
+          - {package: cdi}
+```
+
+`kubepkg install mydistro` installs every member and the meta package itself. Each member's `Package` gets the constraints the packages requiring it set (all of them must hold), or follows patch releases when none is set, so installing `mydistro@2.0.0` over 1.0.0 moves the members to the versions 2.0.0 asks for. The operator reports the meta package Ready once every member is; it installs nothing of its own. Platform-wide settings reach the members through the platform values Secret.
+
 ## Package repositories
 
 A repository is one index file that lists every version of every package it offers, the way a Helm repository index lists charts. Charts are not copied into it: each version points at the upstream chart by repository, version and digest.
