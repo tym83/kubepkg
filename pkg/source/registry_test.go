@@ -173,3 +173,52 @@ func TestImmutablePushReadsUnannotatedArtifacts(t *testing.T) {
 		t.Fatalf("not reused: %+v vs %+v", again, old)
 	}
 }
+
+func TestPushChartIsAnInstallableHelmChart(t *testing.T) {
+	host := newMemRegistry(t)
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"Chart.yaml":        "apiVersion: v2\nname: upstream-name\nversion: 0.3.0\ndescription: kept\n",
+		"values.yaml":       "replicas: 1\n",
+		"templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: x}\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	repository := "oci://" + host + "/packages/app"
+	opts := PushOptions{PlainHTTP: true, Immutable: true}
+	res, err := PushChart(ctx, dir, repository, "operator", "1.9.0-2", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f := &Fetcher{CacheDir: t.TempDir(), PlainHTTP: true}
+	got, d, err := f.FetchChart(ctx, Chart{Repository: repository, Name: "operator", Version: "1.9.0-2", Digest: res.LayerDigest})
+	if err != nil {
+		t.Fatalf("published chart cannot be fetched as a chart: %v", err)
+	}
+	if d != res.LayerDigest {
+		t.Fatalf("archive digest %s, push reported %s", d, res.LayerDigest)
+	}
+	meta, err := os.ReadFile(filepath.Join(got, "Chart.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"name: operator", "version: 1.9.0-2", "description: kept"} {
+		if !strings.Contains(string(meta), want) {
+			t.Errorf("Chart.yaml lacks %q:\n%s", want, meta)
+		}
+	}
+
+	defer func(l int) { gzipLevel = l }(gzipLevel)
+	gzipLevel = gzip.BestSpeed
+	again, err := PushChart(ctx, dir, repository, "operator", "1.9.0-2", opts)
+	if err != nil || !again.Reused || again.LayerDigest != res.LayerDigest {
+		t.Fatalf("republishing the same chart: %+v %v", again, err)
+	}
+}

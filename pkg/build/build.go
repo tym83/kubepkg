@@ -113,30 +113,47 @@ func Build(ctx context.Context, dir string, opts Options) (*Result, error) {
 	return &Result{Recipe: r, TreeDir: tree, Source: src}, nil
 }
 
-// Publish pushes the tree to registry (oci://host/path) under
-// <name>:<version>-<build> and points the PackageSource at the pushed
-// digest, so the published version cannot change under its users. Tags
-// are immutable: when the tag already holds the same content, built
-// perhaps with another compressor, the published artifact is reused and
-// reused is true.
+// Publish pushes every built chart to registry (oci://host/path) as a
+// Helm chart, oci://host/path/<package>/<chart>:<version>-<build>, and
+// points the package's components at them by archive digest. Helm, Flux,
+// Argo CD and werf install such charts as they are, so a built package
+// does not need kubepkg to be installed. Tags are immutable: when a tag
+// already holds the same content, built perhaps with another compressor,
+// the published chart is reused; reused is true when all of them were.
 func Publish(ctx context.Context, res *Result, registry string, opts source.PushOptions) (*v1alpha1.PackageSource, bool, error) {
+	out := res.Source.DeepCopy()
 	if len(res.Recipe.Spec.Charts) == 0 {
 		// A meta package: only requirements, nothing to push.
-		return res.Source.DeepCopy(), false, nil
+		return out, false, nil
 	}
-	repo := strings.TrimSuffix(registry, "/") + "/" + res.Recipe.Metadata.Name
-	tag := fmt.Sprintf("%s-%d", strings.TrimPrefix(res.Recipe.Spec.Version, "v"), res.Recipe.Spec.Build)
+	repository := strings.TrimSuffix(registry, "/") + "/" + res.Recipe.Metadata.Name
+	version := fmt.Sprintf("%s-%d", strings.TrimPrefix(res.Recipe.Spec.Version, "v"), res.Recipe.Spec.Build)
 	opts.Immutable = true
-	pushed, err := source.Push(ctx, res.TreeDir, repo+":"+tag, opts)
-	if errors.Is(err, source.ErrTagChanged) {
-		return nil, false, fmt.Errorf("%s %s build %d is already published with different content; published versions do not change, give the recipe a new build number", res.Recipe.Metadata.Name, res.Recipe.Spec.Version, res.Recipe.Spec.Build)
+	names := make([]string, 0, len(res.Recipe.Spec.Charts))
+	for n := range res.Recipe.Spec.Charts {
+		names = append(names, n)
 	}
-	if err != nil {
-		return nil, false, err
+	sort.Strings(names)
+	refs := map[string]*v1alpha1.ChartRef{}
+	reused := true
+	for _, n := range names {
+		pushed, err := source.PushChart(ctx, filepath.Join(res.TreeDir, n), repository, n, version, opts)
+		if errors.Is(err, source.ErrTagChanged) {
+			return nil, false, fmt.Errorf("%s %s build %d is already published with different content; published versions do not change, give the recipe a new build number", res.Recipe.Metadata.Name, res.Recipe.Spec.Version, res.Recipe.Spec.Build)
+		}
+		if err != nil {
+			return nil, false, fmt.Errorf("chart %s: %w", n, err)
+		}
+		reused = reused && pushed.Reused
+		refs[n] = &v1alpha1.ChartRef{Repository: repository, Name: n, Version: version, Digest: pushed.LayerDigest}
 	}
-	out := res.Source.DeepCopy()
-	out.Spec.SourceRef = &v1alpha1.PackageSourceRef{Kind: v1alpha1.SourceKindOCIArtifact, URL: repo + "@" + pushed.Digest}
-	return out, pushed.Reused, nil
+	for vi := range out.Spec.Variants {
+		for ci := range out.Spec.Variants[vi].Components {
+			c := &out.Spec.Variants[vi].Components[ci]
+			c.Chart, c.Path = refs[c.Path], ""
+		}
+	}
+	return out, reused, nil
 }
 
 func (b *builder) chart(name string, c Chart, dst string) error {
