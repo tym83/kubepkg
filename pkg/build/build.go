@@ -19,6 +19,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -114,17 +115,24 @@ func Build(ctx context.Context, dir string, opts Options) (*Result, error) {
 
 // Publish pushes the tree to registry (oci://host/path) under
 // <name>:<version>-<build> and points the PackageSource at the pushed
-// digest, so the published version cannot change under its users.
-func Publish(ctx context.Context, res *Result, registry string, opts source.PushOptions) (*v1alpha1.PackageSource, error) {
+// digest, so the published version cannot change under its users. Tags
+// are immutable: when the tag already holds the same content, built
+// perhaps with another compressor, the published artifact is reused and
+// reused is true.
+func Publish(ctx context.Context, res *Result, registry string, opts source.PushOptions) (*v1alpha1.PackageSource, bool, error) {
 	repo := strings.TrimSuffix(registry, "/") + "/" + res.Recipe.Metadata.Name
 	tag := fmt.Sprintf("%s-%d", strings.TrimPrefix(res.Recipe.Spec.Version, "v"), res.Recipe.Spec.Build)
-	digest, err := source.Push(ctx, res.TreeDir, repo+":"+tag, opts)
+	opts.Immutable = true
+	pushed, err := source.Push(ctx, res.TreeDir, repo+":"+tag, opts)
+	if errors.Is(err, source.ErrTagChanged) {
+		return nil, false, fmt.Errorf("%s %s build %d is already published with different content; published versions do not change, give the recipe a new build number", res.Recipe.Metadata.Name, res.Recipe.Spec.Version, res.Recipe.Spec.Build)
+	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	out := res.Source.DeepCopy()
-	out.Spec.SourceRef = &v1alpha1.PackageSourceRef{Kind: v1alpha1.SourceKindOCIArtifact, URL: repo + "@" + digest}
-	return out, nil
+	out.Spec.SourceRef = &v1alpha1.PackageSourceRef{Kind: v1alpha1.SourceKindOCIArtifact, URL: repo + "@" + pushed.Digest}
+	return out, pushed.Reused, nil
 }
 
 func (b *builder) chart(name string, c Chart, dst string) error {

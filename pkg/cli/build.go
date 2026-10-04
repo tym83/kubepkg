@@ -42,7 +42,10 @@ recipe's values and overlays, and writes the package tree. With --registry
 it pushes the tree and writes the PackageSource that installs it, pinned
 to the pushed digest; feed those files to "kubepkg repo index".
 
-The same recipe always builds the same bytes.`,
+The same recipe always builds the same content. Published versions are
+immutable: when the tag already holds that content, the published
+artifact is reused, whatever compressor built it; different content
+under the same version and build is an error.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if workDir == "" {
@@ -70,7 +73,7 @@ The same recipe always builds the same bytes.`,
 					res.Recipe.Metadata.Name, res.Recipe.Spec.Version, res.Recipe.Spec.Build, res.TreeDir)
 				return nil
 			}
-			src, err := build.Publish(cmd.Context(), res, registry, push)
+			src, reused, err := build.Publish(cmd.Context(), res, registry, push)
 			if err != nil {
 				return err
 			}
@@ -85,7 +88,11 @@ The same recipe always builds the same bytes.`,
 			if err := os.WriteFile(file, raw, 0o644); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "published %s, wrote %s\n", src.Spec.SourceRef.URL, file)
+			verb := "published"
+			if reused {
+				verb = "already published"
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s %s, wrote %s\n", verb, src.Spec.SourceRef.URL, file)
 			return nil
 		},
 	}
