@@ -34,11 +34,11 @@ publishes it in the Flux artifact format, so kubepkg and Flux can both
 read it. The same tree always produces the same digest.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			d, err := source.Push(cmd.Context(), args[0], args[1], opts)
+			res, err := source.Push(cmd.Context(), args[0], args[1], opts)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "pushed %s@%s\n", args[1], d)
+			fmt.Fprintf(cmd.OutOrStdout(), "pushed %s@%s\n", args[1], res.Digest)
 			return nil
 		},
 	}

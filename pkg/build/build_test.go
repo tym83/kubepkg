@@ -215,11 +215,11 @@ func TestBuildIsReproducible(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		raw, err := source.Pack(res.TreeDir)
+		_, content, err := source.Pack(res.TreeDir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return sum(raw)
+		return content
 	}
 	if a, b := digest(), digest(); a != b {
 		t.Fatalf("two builds of one recipe differ: %s %s", a, b)

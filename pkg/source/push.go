@@ -22,6 +22,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -34,6 +35,8 @@ import (
 	"github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	content2 "oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/credentials"
@@ -54,26 +57,54 @@ type PushOptions struct {
 	PlainHTTP bool
 	// CredentialsFile is a Docker config with registry credentials.
 	CredentialsFile string
+	// Immutable refuses to move a tag: when the tag already holds the same
+	// content, the published artifact is reused; different content is an
+	// error.
+	Immutable bool
+}
+
+// AnnotationContentDigest on a published tree is the sha256 of its
+// uncompressed tarball. The compressed layer depends on the compressor,
+// which changes between Go releases; the content does not.
+const AnnotationContentDigest = "dev.kubepkg.content.digest"
+
+// ErrTagChanged is returned when an immutable tag already holds different
+// content.
+var ErrTagChanged = errors.New("tag already published with different content")
+
+// gzipLevel and annotateContent are variables so tests can stand in for
+// another compressor and for artifacts published without the annotation.
+var (
+	gzipLevel       = gzip.BestCompression
+	annotateContent = true
+)
+
+// PushResult describes a push.
+type PushResult struct {
+	// Digest is the manifest digest the tag points at.
+	Digest string
+	// Reused is true when the tag already held the same content and
+	// nothing was pushed.
+	Reused bool
 }
 
 // Push packs dir into a reproducible gzipped tarball and pushes it as a
-// single-layer artifact to ref (oci://host/repo:tag). It returns the
-// manifest digest.
-func Push(ctx context.Context, dir, ref string, opts PushOptions) (string, error) {
+// single-layer artifact to ref (oci://host/repo:tag).
+func Push(ctx context.Context, dir, ref string, opts PushOptions) (PushResult, error) {
 	target := strings.TrimPrefix(ref, "oci://")
 	if target == ref {
-		return "", fmt.Errorf("target %q must be an oci:// reference", ref)
+		return PushResult{}, fmt.Errorf("target %q must be an oci:// reference", ref)
 	}
 	repo, err := remote.NewRepository(target)
 	if err != nil {
-		return "", err
+		return PushResult{}, err
 	}
 	repo.PlainHTTP = opts.PlainHTTP
 	client := &auth.Client{Client: retry.DefaultClient, Cache: auth.NewCache()}
 	if opts.CredentialsFile != "" {
 		store, err := credentials.NewStore(opts.CredentialsFile, credentials.StoreOptions{})
 		if err != nil {
-			return "", err
+			return PushResult{}, err
 		}
 		client.Credential = credentials.Credential(store)
 	} else if store, err := credentials.NewStoreFromDocker(credentials.StoreOptions{}); err == nil {
@@ -81,9 +112,14 @@ func Push(ctx context.Context, dir, ref string, opts PushOptions) (string, error
 	}
 	repo.Client = client
 
-	layer, err := Pack(dir)
+	layer, content, err := Pack(dir)
 	if err != nil {
-		return "", err
+		return PushResult{}, err
+	}
+	if opts.Immutable {
+		if res, done, err := published(ctx, repo, content); done {
+			return res, err
+		}
 	}
 	config := []byte("{}")
 	configDesc := ocispec.Descriptor{MediaType: FluxConfigMediaType, Digest: digest.FromBytes(config), Size: int64(len(config))}
@@ -100,9 +136,12 @@ func Push(ctx context.Context, dir, ref string, opts PushOptions) (string, error
 			"org.opencontainers.image.revision": opts.Revision,
 		},
 	}
+	if annotateContent {
+		manifest.Annotations[AnnotationContentDigest] = content
+	}
 	mraw, err := json.Marshal(manifest)
 	if err != nil {
-		return "", err
+		return PushResult{}, err
 	}
 	mdesc := ocispec.Descriptor{MediaType: ocispec.MediaTypeImageManifest, Digest: digest.FromBytes(mraw), Size: int64(len(mraw))}
 
@@ -114,19 +153,78 @@ func Push(ctx context.Context, dir, ref string, opts PushOptions) (string, error
 			continue
 		}
 		if err := repo.Push(ctx, b.d, bytes.NewReader(b.c)); err != nil {
-			return "", fmt.Errorf("push blob: %w", err)
+			return PushResult{}, fmt.Errorf("push blob: %w", err)
 		}
 	}
 	if err := repo.PushReference(ctx, mdesc, bytes.NewReader(mraw), repo.Reference.Reference); err != nil {
-		return "", fmt.Errorf("push manifest: %w", err)
+		return PushResult{}, fmt.Errorf("push manifest: %w", err)
 	}
-	return mdesc.Digest.String(), nil
+	return PushResult{Digest: mdesc.Digest.String()}, nil
+}
+
+// published checks an immutable tag before pushing. done is true when the
+// tag exists: then either the same content is there and res names it, or
+// err says it changed.
+func published(ctx context.Context, repo *remote.Repository, content string) (res PushResult, done bool, err error) {
+	desc, err := repo.Resolve(ctx, repo.Reference.Reference)
+	if errors.Is(err, errdef.ErrNotFound) {
+		return PushResult{}, false, nil
+	}
+	if err != nil {
+		return PushResult{}, true, fmt.Errorf("resolve %s: %w", repo.Reference, err)
+	}
+	raw, err := content2.FetchAll(ctx, repo, desc)
+	if err != nil {
+		return PushResult{}, true, err
+	}
+	var m ocispec.Manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return PushResult{}, true, err
+	}
+	have := m.Annotations[AnnotationContentDigest]
+	if have == "" {
+		// Published before the annotation existed, or by another tool:
+		// work the content out from the layer itself.
+		if have, err = layerContent(ctx, repo, m); err != nil {
+			return PushResult{}, true, fmt.Errorf("%s: %w", repo.Reference, err)
+		}
+	}
+	if have != content {
+		return PushResult{}, true, fmt.Errorf("%s: %w", repo.Reference, ErrTagChanged)
+	}
+	return PushResult{Digest: desc.Digest.String(), Reused: true}, true, nil
+}
+
+// layerContent is the digest of the uncompressed tree layer of m.
+func layerContent(ctx context.Context, repo *remote.Repository, m ocispec.Manifest) (string, error) {
+	for _, l := range m.Layers {
+		if !treeMediaTypes[l.MediaType] {
+			continue
+		}
+		rc, err := repo.Fetch(ctx, l)
+		if err != nil {
+			return "", err
+		}
+		defer rc.Close()
+		gz, err := gzip.NewReader(content2.NewVerifyReader(rc, l))
+		if err != nil {
+			return "", err
+		}
+		d := digest.Canonical.Digester()
+		if _, err := io.Copy(d.Hash(), io.LimitReader(gz, maxTreeBytes)); err != nil {
+			return "", err
+		}
+		return d.Digest().String(), nil
+	}
+	return "", errors.New("no package tree layer")
 }
 
 // Pack makes a gzipped tarball of dir with sorted entries, zero
-// timestamps and fixed ownership, so the same tree always produces the
-// same bytes and the same digest.
-func Pack(dir string) ([]byte, error) {
+// timestamps and fixed ownership, and returns it with the digest of the
+// uncompressed tarball. The content digest is the same for the same tree
+// everywhere; the compressed bytes are the same only with the same
+// compressor.
+func Pack(dir string) ([]byte, string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -141,41 +239,45 @@ func Pack(dir string) ([]byte, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	sort.Strings(files)
-	var buf bytes.Buffer
-	gz, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
-	gz.ModTime = time.Unix(0, 0)
-	tw := tar.NewWriter(gz)
+	var tarball bytes.Buffer
+	tw := tar.NewWriter(&tarball)
 	for _, p := range files {
 		rel, err := filepath.Rel(dir, p)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		info, err := os.Stat(p)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		hdr := &tar.Header{Name: filepath.ToSlash(rel), Mode: 0o644, Size: info.Size(), Typeflag: tar.TypeReg, ModTime: time.Unix(0, 0), Format: tar.FormatPAX}
 		if err := tw.WriteHeader(hdr); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		f, err := os.Open(p)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		_, err = io.Copy(tw, f)
 		f.Close()
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
 	if err := tw.Close(); err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	var buf bytes.Buffer
+	gz, _ := gzip.NewWriterLevel(&buf, gzipLevel)
+	gz.ModTime = time.Unix(0, 0)
+	if _, err := gz.Write(tarball.Bytes()); err != nil {
+		return nil, "", err
 	}
 	if err := gz.Close(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), digest.FromBytes(tarball.Bytes()).String(), nil
 }
