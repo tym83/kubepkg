@@ -1,0 +1,352 @@
+# Design: kubepkg v0.1
+
+This document specifies the v0.1 API and the behaviour of the operator and the CLI. The reasons behind the choices are in [rationale.md](rationale.md).
+
+## Scope of v0.1
+
+In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, a plan before changes, two backends (Helm and Flux), and settings that let a platform embed kubepkg without changing its code.
+
+Out of scope for v0.1, on the roadmap: signature verification, TUF repository metadata, pre-upgrade hooks, an in-cluster repository resource with automatic version selection, multi-cluster targeting.
+
+## Resources
+
+All resources are cluster-scoped, in the API group `kubepkg.dev`, version `v1alpha1`. A platform that embeds kubepkg may serve the same types under its own group (see [Embedding in a platform](#embedding-in-a-platform)).
+
+### PackageSource
+
+One package at one version: where its charts come from and how they are installed. The name is the package name.
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: PackageSource
+metadata:
+  name: cert-manager
+spec:
+  version: 1.16.2                 # semver of this package
+  provides:                       # capabilities this package offers
+    - cert-manager
+    - api:cert-manager.io/v1
+  conflicts: []                   # package names or capabilities that must not coexist
+  crds:                           # CRDs this package owns
+    - certificates.cert-manager.io
+    - issuers.cert-manager.io
+  permissions:                    # declared, shown in plans, not enforced in v0.1
+    clusterWide: true
+    rules:
+      - apiGroups: ["*"]
+        resources: ["*"]
+        verbs: ["*"]
+  rollback:
+    safe: true                    # rolling back to the previous version does not lose data
+  variants:
+    - name: default
+      dependsOn: []               # package names, no version
+      requires:                   # structured requirements
+        - package: networking
+          version: ">=1.0.0 <2.0.0"
+        - capability: api:monitoring.coreos.com/v1
+          optional: true
+      components:
+        - name: cert-manager
+          chart:                  # the upstream chart, used as is
+            repository: https://charts.jetstack.io
+            name: cert-manager
+            version: v1.16.2
+            digest: sha256:...    # of the chart archive; pinned charts are verified
+          install:
+            namespace: cert-manager
+            releaseName: cert-manager
+            dependsOn: []
+            healthCheckExprs: []
+```
+
+A component takes its chart from one of two places:
+
+- `chart` — a chart published in a Helm repository (`https://...`) or an OCI registry (`oci://...`), at an exact version. With `digest` set, a chart whose archive does not match is refused, so a repository that republishes a version cannot change what gets installed; the digest is also the cache key, so a cached pinned chart needs no network. A package made only of such components needs no `sourceRef` at all: wrapping an upstream chart is one PackageSource.
+- `path` — a chart directory inside a package tree, given by `sourceRef` (an `OCIArtifact` published with `kubepkg push`). Use it for charts you write yourself; only these can share `libraries` and use `valuesFiles`.
+
+Exactly one of the two is set; the API server rejects anything else.
+
+A missing `version` is treated as the unversioned version `0.0.0-unversioned`, which satisfies only an empty constraint. `dependsOn: [x]` is equivalent to `requires: [{package: x}]`.
+
+### Package
+
+The desired state: this package is installed, in this variant, at a version matching this constraint. The name is the package name.
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: Package
+metadata:
+  name: cert-manager
+spec:
+  variant: default
+  version: "~1.16"                # constraint the installed PackageSource must satisfy
+  components:                     # per-component overrides
+    cert-manager:
+      values: {}
+  ignoreDependencies: []
+  upgrade:
+    atomic: true                  # roll back the whole package on failure, if the version is rollback-safe
+    timeout: 10m
+  revisionHistoryLimit: 10
+  crdPolicy: Retain               # Retain (default) or Delete when the package is removed
+status:
+  conditions: []                  # Ready, plus reasons listed below
+  dependencies: {}
+  version: 1.16.2                 # the version that is applied
+  currentRevision: 3
+  history:                        # last revisions, newest first
+    - revision: 3
+      version: 1.16.2
+      phase: Applied
+```
+
+### PackageRevision
+
+An immutable record of one applied state of a package. Created by the operator; users read it, they do not write it.
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: PackageRevision
+metadata:
+  name: cert-manager-3
+  labels:
+    kubepkg.dev/package: cert-manager
+spec:
+  package: cert-manager
+  revision: 3
+  version: 1.16.2
+  variant: default
+  rollbackSafe: true
+  components:
+    - name: cert-manager
+      releaseName: cert-manager
+      namespace: cert-manager
+      chartDigest: sha256:...      # what was rendered
+      valuesDigest: sha256:...
+status:
+  phase: Applied                  # Pending | Applying | Applied | Failed | RolledBack | Superseded
+  components:
+    - name: cert-manager
+      backendRevision: 7          # the Helm release revision this revision produced
+```
+
+A rollback is the operator re-applying an earlier revision's recorded state; it creates a new revision whose spec matches the old one, so history only grows.
+
+## Requirements and capabilities
+
+A requirement is satisfied by:
+
+- `package: X, version: C` — a `Package` named X is Ready and its applied version satisfies C;
+- `capability: Y` — a Ready package lists Y in `provides`, or Y has the form `api:<group>/<version>` and the API server serves that group version (discovery), so components installed outside kubepkg still count.
+
+Requirements marked `optional: true` only order installation: if the requirement is present it must be Ready first; if it is absent the package proceeds.
+
+Constraints use Masterminds semver syntax (`>=1.2 <2`, `~1.16`, `^2`).
+
+A package is blocked, with condition `Ready=False`, when:
+
+| Reason | Meaning |
+|---|---|
+| `VersionMismatch` | the PackageSource version does not satisfy `Package.spec.version` |
+| `RequirementsNotMet` | a requirement is missing or not Ready; the message names it |
+| `Conflict` | an installed package matches an entry in `conflicts`, in either direction |
+| `CRDOwnershipConflict` | a CRD in `crds` is owned by another package |
+| `UpgradeFailed` | the latest revision failed and was not rolled back |
+| `UpgradeRolledBack` | the latest revision failed and the package was rolled back to the previous one |
+
+## Applying a revision
+
+The operator builds the desired state from Package and PackageSource. If it differs from the current revision (version, variant, component set, chart or values digests), it creates revision N+1 and applies it:
+
+1. Components are applied in dependency order through the backend.
+2. Each component must become healthy within `upgrade.timeout` — Helm readiness, plus `healthCheckExprs` when set.
+3. If every component is healthy, revision N+1 is `Applied` and N becomes `Superseded`.
+4. If a component fails and `upgrade.atomic` is true and revision N is marked `rollbackSafe`, every component already changed is rolled back to the backend revision recorded in N, in reverse order. N+1 becomes `Failed`, a revision N+2 recording the restored state is added, and the package reports `UpgradeRolledBack`.
+5. If the rollback is not safe, the operator stops, N+1 stays `Failed`, and the package reports `UpgradeFailed`. Recovery is a forward fix.
+
+`rollbackSafe` is taken from the version being rolled back from: the author of 1.17 knows whether going back to 1.16 is safe after 1.17 ran its migrations.
+
+## CRD ownership
+
+After a revision is applied, every CRD listed in `crds` is annotated `kubepkg.dev/owned-by: <package>`. A package cannot be applied while a CRD it lists is owned by another package. When a package is deleted, its CRDs are kept unless `crdPolicy: Delete`; kept CRDs lose the annotation so another package can adopt them.
+
+## Backends
+
+```go
+type Backend interface {
+	Apply(ctx context.Context, c Component) (Result, error)
+	Status(ctx context.Context, c Component) (State, error)
+	Rollback(ctx context.Context, c Component, toRevision int) error
+	Uninstall(ctx context.Context, c Component) error
+}
+```
+
+- **helm** installs charts with the Helm SDK inside the operator. Sources: published charts (HTTP repositories and OCI registries) and `OCIArtifact` package trees. Rollback uses Helm release history. No other controllers are needed.
+- **flux** renders each component into a Flux `HelmRelease`. Sources: `GitRepository`, `OCIRepository`, through Flux `ExternalArtifact`; something in the cluster has to publish each component's chart as that artifact, and kubepkg does not ship such a controller yet. Flux keeps no earlier chart artifacts, so this backend cannot roll back: packages applied through it are always recovered by a forward fix, and `UpgradeFailed` is reported instead of `UpgradeRolledBack`.
+
+The backend is chosen per operator installation (`--backend`).
+
+## Building packages
+
+Packages in a repository are built by the repository's maintainers from upstream sources, the way Debian builds from upstream tarballs. The upstream's own distribution format does not matter: release manifests, a chart, an archive of a source tree. Installing a built package never contacts the upstream. A component with `chart` installs an upstream chart directly; that is a quick way to install something, not how repository packages are made.
+
+A recipe is a directory with `recipe.yaml` and whatever files the maintainers add:
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: kubevirt
+  annotations:
+    kubepkg.dev/description: Virtual machines on Kubernetes
+spec:
+  version: 1.9.0                  # upstream version
+  build: 1                        # our packaging of it
+  sources:                        # every source is pinned
+    operator:
+      url: https://github.com/kubevirt/kubevirt/releases/download/v1.9.0/kubevirt-operator.yaml
+      sha256: f11307ca...
+    kubevirt:
+      dir: charts/kubevirt        # a chart we maintain, next to the recipe
+  charts:                         # what goes into the package tree
+    kubevirt-operator:
+      from: [operator]            # plain manifests are wrapped into a chart
+      exclude: [{kind: Namespace}]
+    kubevirt:
+      from: [kubevirt]            # a chart source is used as is
+  package:                        # the PackageSource spec; components refer to built charts
+    provides: [kubevirt, "api:kubevirt.io/v1"]
+    rollback: {safe: false}
+    variants:
+      - name: default
+        components:
+          - {name: operator, path: kubevirt-operator, install: {namespace: kubevirt}}
+          - {name: kubevirt, path: kubevirt, install: {namespace: kubevirt, dependsOn: [operator]}}
+```
+
+Sources are a file or `.tar.gz` archive by URL with its sha256 (`path` picks a file or directory inside an archive), a published chart with its digest, or a directory next to the recipe. A chart is made from one chart source, or from manifests, which are wrapped into a chart that applies them verbatim: their content never passes through the template engine. On top of that, `values` sets the package's defaults, `overlay` adds or replaces files, and `exclude` drops objects from wrapped manifests.
+
+`kubepkg build <recipe> --registry oci://...` fetches and checks the sources, writes the package tree, pushes it as `<name>:<version>-<build>` and writes the PackageSource pinned to the pushed digest; `kubepkg repo index` over those files makes the index. The same recipe always builds the same bytes.
+
+A distribution extends builds with plugins. A source `{plugin: git, with: {...}}` is fetched by a source plugin, and a chart's `steps: [{plugin: relocate-images, with: {...}}]` run step plugins on the finished chart, in order. A plugin is either Go code registered in `build.Options.Plugins`, or an executable on `PATH` named `kubepkg-source-<name>` or `kubepkg-step-<name>`, in any language: it reads `with` as JSON on stdin, finds its directories in `KUBEPKG_OUT` (a source fills it) or `KUBEPKG_CHART` (a step changes it), the package in `KUBEPKG_PACKAGE` and `KUBEPKG_VERSION`, runs in the recipe directory, and fails the build with a non-zero exit. Plugins must be deterministic, or builds stop being reproducible.
+
+`spec.version` is the upstream version and `spec.build` numbers our packagings of it. Constraints match the version; of two builds of one version the higher is newer.
+
+## Package repositories
+
+A repository is one index file that lists every version of every package it offers, the way a Helm repository index lists charts. Charts are not copied into it: each version points at the upstream chart by repository, version and digest.
+
+Authors keep one PackageSource per package version in a directory, in any layout:
+
+```
+recipes/
+  cert-manager/1.16.2.yaml
+  cert-manager/1.17.0.yaml
+  cilium/1.18.1.yaml
+```
+
+`kubepkg repo index recipes -o index.yaml` turns them into the index:
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: RepositoryIndex
+packages:
+  cert-manager:
+    description: X.509 certificate management for Kubernetes   # kubepkg.dev/description annotation
+    home: https://cert-manager.io                               # kubepkg.dev/home annotation
+    versions:                                                   # newest first
+      - version: 1.17.0
+        digest: sha256:...      # of the spec in canonical JSON
+        spec: {...}             # the PackageSource spec, as installed
+```
+
+Building the index enforces what makes a repository trustworthy:
+
+- every version is an exact semver version, and a package version is defined once;
+- every chart is pinned by digest: charts without one are downloaded and pinned in the index (the recipe files stay as they are), and `--verify` re-downloads pinned charts to check them;
+- a version built from a package tree must pin the tree by digest (`oci://...@sha256:...`).
+- with `--merge <published index>`, versions published before are kept even when their recipes are gone, and a version rebuilt under the same version and build must come out identical: published versions never change, a changed recipe needs a new build number.
+
+Because every chart is pinned, the spec digest identifies exactly what a version installs; it is what signatures will cover once they are added. The index is published as a static `index.yaml` over HTTP.
+
+### Installing from repositories
+
+A cluster subscribes to repositories with `Repository` resources:
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: Repository
+metadata:
+  name: main
+spec:
+  url: https://packages.example.org/index.yaml
+  priority: 10                    # the highest priority repository carrying a package shadows the others
+  interval: 10m
+status:
+  packages: 42
+  indexDigest: sha256:...
+  conditions: []                  # Ready: IndexLoaded, FetchFailed, InvalidIndex, IndexRefused
+```
+
+The operator keeps every index loaded. A `Package` with no hand-written `PackageSource` gets one from the repositories. The package is taken from the highest priority repository that carries it at all (of all repositories, or only `spec.repository`); it shadows the others even when it has no version matching `spec.version`, so a package a vendor repository carries never silently comes from a community one. Within that repository the newest version and build matching `spec.version` wins. The operator writes that version's spec as the `PackageSource`, labelled `kubepkg.dev/repository` and owned by the `Package`; installation then proceeds as for any `PackageSource`.
+
+- The constraint is the policy: `~1.9` follows new 1.9.x releases as the index gains them, an exact version stays put.
+- A hand-written `PackageSource` always wins, which is how a cluster overrides a package locally.
+- Selection waits until every repository has been fetched once, so after a restart a low priority index that loads first cannot win for a moment.
+- A failed refresh keeps the index loaded before; a repository that never loaded leaves its packages at `VersionNotAvailable`.
+- Requirements are not installed automatically: a package whose requirements are missing reports `RequirementsNotMet`. Installing a package together with what it needs is the CLI's job, so the cluster state stays explicit.
+
+A distribution adds index transports by URL scheme (`http` and `https` are built in) and a policy that admits indexes and versions — signature checks, allowed registries — through `operator.Options`.
+
+## Embedding in a platform
+
+kubepkg is a mechanism first and a set of binaries second. It runs in any conformant cluster with nothing but its CRDs and the operator, and a distribution adapts it at three levels, from no code to its own binaries.
+
+Configuration — operator flags, all off by default:
+
+| Flag | Does |
+|---|---|
+| `--api-group` | serves the types under the platform's own group; `make crds-for-group GROUP=... OUT=...` writes matching CRDs. The CLI takes the same flag |
+| `--values-secret namespace/name` | layers the Secret's `values.yaml` under every component's values, for cluster-wide settings such as a domain or an issuer; a PackageSource opts out with the `kubepkg.dev/skip-platform-values` annotation. A missing Secret fails the release instead of installing it unconfigured |
+| `--namespace-label key=value` | labels every namespace the packages create (repeatable) |
+| `--artifact-namespace` | where Flux chart artifacts live (flux backend) |
+
+Releases are labelled `kubepkg.dev/package`; privileged components get `<group>/privileged`.
+
+Plugins — build source and step plugins, as executables on `PATH` (see [Building packages](#building-packages)); a distribution adds its own fetching and processing, such as moving images to its registry, without Go code.
+
+Libraries — everything the binaries do is in importable packages, so a distribution builds its own binaries without forking:
+
+- `pkg/operator`: `DefaultOptions`, the standard flags, a registry of named backends a distribution extends with its own, and `Run`. `kubepkg-operator` is a thin `main` over it.
+- `pkg/cli`: `NewRootCommand` with the distribution's name and API group; it adds commands of its own.
+- `pkg/backend`: the `Backend` interface the operator installs through; `pkg/controller` the reconciler and its `Preparer`, `APIs` and `CRDOwner` interfaces.
+- `pkg/build`, `pkg/repo`, `pkg/resolve`, `pkg/source`: building, indexing, resolving and fetching, each usable alone.
+
+## CLI
+
+`kubepkg` works against the cluster and against files, so the same commands run in CI.
+
+Installing and running:
+
+| Command | Does |
+|---|---|
+| `repo add <name> <url>`, `repo list`, `repo remove <name>` | subscribe the cluster to repositories |
+| `search [term]` | what the repositories offer, from the repository each package is taken from |
+| `install <pkg>[@constraint]...` | resolves the packages and their requirements against the cluster's repositories, shows the plan, and writes one Package per package; requirements already installed are kept, packages pulled in as requirements are marked `kubepkg.dev/dependency`, and without a constraint a package follows patch releases (`~X.Y`) |
+| `plan <pkg>[@constraint]...` | the same plan without changing anything: installs, upgrades, downgrades, CRDs, permissions, rollback safety |
+| `list` | packages, versions, revisions, readiness |
+| `history <pkg>` | revisions of a package |
+| `rollback <pkg> [--to N]` | re-applies an earlier revision |
+
+Building and publishing:
+
+| Command | Does |
+|---|---|
+| `build <recipe>` | build a package from upstream sources and publish it |
+| `repo index <dir>` | build a repository index from the PackageSources under a directory |
+| `push <dir> <oci-ref>` | publish a package tree as is |
+
+Planned: `remove <pkg>` refusing while another package requires it, `render` for other delivery tools, `init` and `validate` for recipe authors.
+
+The CLI resolves with the operator's own view of the cluster and the same repository shadowing and policy, so a plan shows what the operator will do.
