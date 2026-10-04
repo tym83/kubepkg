@@ -107,31 +107,23 @@ func libraryPaths(v *v1alpha1.Variant) map[string]string {
 	return out
 }
 
-// FluxPreparer points components at the ExternalArtifacts Flux builds from
-// the PackageSource.
-type FluxPreparer struct {
-	ArtifactNamespace string
-}
-
-// ArtifactName is <packagesource>-<variant>-<component> with dots replaced.
-func ArtifactName(src, variant, comp string) string {
-	r := strings.NewReplacer(".", "-")
-	return fmt.Sprintf("%s-%s-%s", r.Replace(src), r.Replace(variant), r.Replace(comp))
-}
+// ChartPreparer hands published charts to backends that install through
+// another tool (flux, argo). Such tools fetch charts themselves, so only
+// components with chart can be installed this way; built packages are
+// made of published charts.
+type ChartPreparer struct{}
 
 // Prepare implements Preparer.
-func (p *FluxPreparer) Prepare(_ context.Context, src *v1alpha1.PackageSource, variant *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
-	if comp.Chart != nil {
-		return "", fmt.Errorf("component %s: the flux backend does not install published charts yet", comp.Name)
+func (ChartPreparer) Prepare(_ context.Context, src *v1alpha1.PackageSource, _ *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
+	ch := comp.Chart
+	if ch == nil {
+		return "", fmt.Errorf("component %s: this backend installs published charts; build the package or use chart instead of path", comp.Name)
 	}
-	c.ArtifactName = ArtifactName(src.Name, variant.Name, comp.Name)
-	c.ArtifactNamespace = p.ArtifactNamespace
-	// Flux follows chart content on its own; a change of the source spec is
-	// what makes a new package revision.
-	return digestOf(struct {
-		Spec      v1alpha1.PackageSourceSpec
-		Component string
-	}{src.Spec, comp.Name})
+	c.Chart = &backend.Chart{Repository: ch.Repository, Name: ch.Name, Version: ch.Version, Digest: ch.Digest}
+	if ch.Digest != "" {
+		return ch.Digest, nil
+	}
+	return digestOf(struct{ Repository, Name, Version string }{ch.Repository, ch.Name, ch.Version})
 }
 
 // desiredState is everything one package revision will apply.

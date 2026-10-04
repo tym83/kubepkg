@@ -279,8 +279,12 @@ func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1alpha1.Package,
 func (r *PackageReconciler) progress(ctx context.Context, pkg *v1alpha1.Package, rev *v1alpha1.PackageRevision, d *desiredState, revs *[]v1alpha1.PackageRevision, src *v1alpha1.PackageSource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	pkg.Status.CurrentRevision = rev.Spec.Revision
+	// Components go one at a time in dependency order: the next one is
+	// applied only once the one before it is ready. A synchronous backend
+	// returns ready from Apply; an asynchronous one (flux, argo) is
+	// re-checked on the next round, so ordering does not depend on the
+	// delivery tool supporting it.
 	var applied []desiredComponent
-	pending := false
 	for _, c := range d.components {
 		s, err := r.Backend.Apply(ctx, c.backend)
 		setComponentStatus(rev, c.snapshot.Name, s.Revision)
@@ -294,28 +298,10 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1alpha1.Package,
 			return r.fail(ctx, pkg, rev, d, applied, revs, fmt.Sprintf("component %s failed: %s", c.snapshot.Name, msg))
 		}
 		if !s.Ready {
-			pending = true
-		}
-	}
-	if pending {
-		// Asynchronous backend: re-check until every component settles.
-		allReady := true
-		for _, c := range d.components {
-			s, err := r.Backend.Status(ctx, c.backend)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			if s.Failed {
-				return r.fail(ctx, pkg, rev, d, applied, revs, fmt.Sprintf("component %s failed: %s", c.snapshot.Name, s.Message))
-			}
-			setComponentStatus(rev, c.snapshot.Name, s.Revision)
-			allReady = allReady && s.Ready
-		}
-		if !allReady {
 			if err := r.Status().Update(ctx, rev); err != nil {
 				return ctrl.Result{}, err
 			}
-			setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonProgressing, fmt.Sprintf("applying revision %d", rev.Spec.Revision))
+			setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonProgressing, fmt.Sprintf("applying revision %d: waiting for %s", rev.Spec.Revision, c.snapshot.Name))
 			return ctrl.Result{RequeueAfter: progressRequeue}, nil
 		}
 	}

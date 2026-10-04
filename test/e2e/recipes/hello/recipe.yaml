@@ -1,0 +1,16 @@
+apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata: {name: hello}
+spec:
+  version: 1.0.0
+  build: 1
+  sources:
+    hello: {dir: charts/hello}
+  charts:
+    hello: {from: [hello]}
+  package:
+    rollback: {safe: true}
+    variants:
+      - name: default
+        components:
+          - {name: hello, path: hello, install: {namespace: e2e-hello}}

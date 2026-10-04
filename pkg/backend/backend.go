@@ -24,6 +24,7 @@ package backend
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/fluxcd/pkg/apis/kustomize"
@@ -40,10 +41,9 @@ type Component struct {
 
 	// ChartDir is a composed chart on local disk (helm backend).
 	ChartDir string
-	// ArtifactName is the Flux ExternalArtifact holding the chart (flux backend).
-	ArtifactName string
-	// ArtifactNamespace is where that artifact lives.
-	ArtifactNamespace string
+	// Chart is a published chart, for backends that hand charts to another
+	// installer (flux, argo) instead of reading them from disk.
+	Chart *Chart
 
 	// Values are the user overrides, merged over the chart's own values.
 	Values map[string]any
@@ -65,6 +65,20 @@ type Component struct {
 	HealthCheckExprs []kustomize.CustomHealthCheck
 	Timeout          time.Duration
 }
+
+// Chart is one version of a published Helm chart.
+type Chart struct {
+	// Repository is an http(s):// Helm repository or an oci:// path; the
+	// chart is <repository>/<name> in a registry.
+	Repository string
+	Name       string
+	Version    string
+	// Digest is the sha256 of the chart archive, when known.
+	Digest string
+}
+
+// OCI reports whether the chart lives in an OCI registry.
+func (c *Chart) OCI() bool { return strings.HasPrefix(c.Repository, "oci://") }
 
 // Key is the release identity, namespace/name.
 func (c Component) Key() string { return c.Namespace + "/" + c.ReleaseName }

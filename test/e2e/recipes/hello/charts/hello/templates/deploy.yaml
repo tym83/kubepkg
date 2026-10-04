@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: hello}
+spec:
+  selector: {matchLabels: {app: hello}}
+  template:
+    metadata: {labels: {app: hello}}
+    spec:
+      containers:
+        - name: main
+          image: {{ .Values.image }}
+          resources: {requests: {cpu: 5m, memory: 8Mi}}

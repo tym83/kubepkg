@@ -15,8 +15,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package flux is the backend that renders components into Flux
-// HelmReleases and lets helm-controller do the installing.
+// Package flux is the backend that installs through Flux: for every
+// component it writes the chart's source (an OCIRepository for charts in
+// a registry, a HelmRepository otherwise) and a HelmRelease, and lets
+// source-controller and helm-controller do the rest. It needs only Flux in
+// the cluster.
 package flux
 
 import (
@@ -32,6 +35,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -43,9 +47,11 @@ import (
 // recovered by a forward fix.
 var ErrRollbackUnsupported = errors.New("the flux backend cannot roll back to an earlier revision")
 
-// Backend writes HelmReleases.
+// Backend writes chart sources and HelmReleases.
 type Backend struct {
-	Client        client.Client
+	Client client.Client
+	// Insecure lets source-controller pull from registries over plain HTTP.
+	Insecure      bool
 	Interval      time.Duration
 	RetryInterval time.Duration
 	MaxHistory    int
@@ -71,6 +77,9 @@ func (b *Backend) defaults() (time.Duration, time.Duration, int) {
 // Render builds the HelmRelease for a component. Exported for the CLI's
 // render command and for tests.
 func (b *Backend) Render(c backend.Component) (*helmv2.HelmRelease, error) {
+	if c.Chart == nil {
+		return nil, fmt.Errorf("component %s has no published chart", c.Name)
+	}
 	iv, rv, mh := b.defaults()
 	timeout := c.Timeout
 	if timeout == 0 {
@@ -87,11 +96,6 @@ func (b *Backend) Render(c backend.Component) (*helmv2.HelmRelease, error) {
 		Spec: helmv2.HelmReleaseSpec{
 			Interval:   metav1.Duration{Duration: iv},
 			MaxHistory: &mh,
-			ChartRef: &helmv2.CrossNamespaceSourceReference{
-				Kind:      "ExternalArtifact",
-				Name:      c.ArtifactName,
-				Namespace: c.ArtifactNamespace,
-			},
 			Install: &helmv2.Install{
 				Timeout:  &metav1.Duration{Duration: timeout},
 				Strategy: &helmv2.InstallStrategy{Name: string(helmv2.ActionStrategyRetryOnFailure), RetryInterval: &metav1.Duration{Duration: rv}},
@@ -104,6 +108,15 @@ func (b *Backend) Render(c backend.Component) (*helmv2.HelmRelease, error) {
 			HealthCheckExprs: c.HealthCheckExprs,
 			WaitStrategy:     waitStrategy(c),
 		},
+	}
+	if c.Chart.OCI() {
+		hr.Spec.ChartRef = &helmv2.CrossNamespaceSourceReference{Kind: "OCIRepository", Name: c.ReleaseName, Namespace: c.Namespace}
+	} else {
+		hr.Spec.Chart = &helmv2.HelmChartTemplate{Spec: helmv2.HelmChartTemplateSpec{
+			Chart:     c.Chart.Name,
+			Version:   c.Chart.Version,
+			SourceRef: helmv2.CrossNamespaceObjectReference{Kind: "HelmRepository", Name: c.ReleaseName, Namespace: c.Namespace},
+		}}
 	}
 	for _, s := range c.ValuesFromSecrets {
 		if strings.Contains(s, "/") {
@@ -144,10 +157,69 @@ func waitStrategy(c backend.Component) *helmv2.WaitStrategy {
 // Apply creates or updates the HelmRelease. It preserves labels,
 // annotations and suspend set by others, because operators of a cluster
 // suspend releases by hand during incidents.
+// RenderSource builds the Flux source of a component's chart: an
+// OCIRepository selecting the Helm chart layer, or a HelmRepository.
+// Exported for the render command.
+func (b *Backend) RenderSource(c backend.Component) (*unstructured.Unstructured, error) {
+	if c.Chart == nil {
+		return nil, fmt.Errorf("component %s has no published chart", c.Name)
+	}
+	iv, _, _ := b.defaults()
+	u := &unstructured.Unstructured{}
+	u.SetAPIVersion(sourceAPIVersion)
+	u.SetName(c.ReleaseName)
+	u.SetNamespace(c.Namespace)
+	u.SetLabels(c.Labels)
+	spec := map[string]any{"interval": iv.String()}
+	if c.Chart.OCI() {
+		u.SetKind("OCIRepository")
+		spec["url"] = strings.TrimSuffix(c.Chart.Repository, "/") + "/" + c.Chart.Name
+		spec["ref"] = map[string]any{"tag": strings.ReplaceAll(c.Chart.Version, "+", "_")}
+		spec["layerSelector"] = map[string]any{"mediaType": chartMediaType, "operation": "copy"}
+	} else {
+		u.SetKind("HelmRepository")
+		spec["url"] = c.Chart.Repository
+	}
+	if b.Insecure {
+		spec["insecure"] = true
+	}
+	u.Object["spec"] = spec
+	return u, nil
+}
+
+const (
+	sourceAPIVersion = "source.toolkit.fluxcd.io/v1"
+	chartMediaType   = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+)
+
+// applySource creates or updates the component's chart source.
+func (b *Backend) applySource(ctx context.Context, c backend.Component) error {
+	want, err := b.RenderSource(c)
+	if err != nil {
+		return err
+	}
+	have := &unstructured.Unstructured{}
+	have.SetGroupVersionKind(want.GroupVersionKind())
+	err = b.Client.Get(ctx, types.NamespacedName{Namespace: c.Namespace, Name: c.ReleaseName}, have)
+	if apierrors.IsNotFound(err) {
+		return b.Client.Create(ctx, want)
+	}
+	if err != nil {
+		return err
+	}
+	have.Object["spec"] = want.Object["spec"]
+	have.SetLabels(want.GetLabels())
+	return b.Client.Update(ctx, have)
+}
+
+// Apply writes the chart source and the HelmRelease.
 func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State, error) {
 	want, err := b.Render(c)
 	if err != nil {
 		return backend.State{}, err
+	}
+	if err := b.applySource(ctx, c); err != nil {
+		return backend.State{}, fmt.Errorf("chart source of %s: %w", c.Key(), err)
 	}
 	have := &helmv2.HelmRelease{}
 	err = b.Client.Get(ctx, types.NamespacedName{Namespace: c.Namespace, Name: c.ReleaseName}, have)
@@ -226,11 +298,22 @@ func (b *Backend) Rollback(context.Context, backend.Component, int) (backend.Sta
 	return backend.State{}, ErrRollbackUnsupported
 }
 
-// Uninstall deletes the HelmRelease; helm-controller removes the release.
+// Uninstall deletes the HelmRelease, which helm-controller uninstalls,
+// and the chart source.
 func (b *Backend) Uninstall(ctx context.Context, c backend.Component) error {
 	hr := &helmv2.HelmRelease{ObjectMeta: metav1.ObjectMeta{Name: c.ReleaseName, Namespace: c.Namespace}}
 	if err := b.Client.Delete(ctx, hr); err != nil && !apierrors.IsNotFound(err) {
 		return err
+	}
+	for _, kind := range []string{"OCIRepository", "HelmRepository"} {
+		u := &unstructured.Unstructured{}
+		u.SetAPIVersion(sourceAPIVersion)
+		u.SetKind(kind)
+		u.SetName(c.ReleaseName)
+		u.SetNamespace(c.Namespace)
+		if err := b.Client.Delete(ctx, u); err != nil && !apierrors.IsNotFound(err) && !meta.IsNoMatchError(err) {
+			return err
+		}
 	}
 	return nil
 }

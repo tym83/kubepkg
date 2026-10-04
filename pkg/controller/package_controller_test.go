@@ -65,9 +65,9 @@ func (f *fakeBackend) state(key string) backend.State {
 }
 
 func (f *fakeBackend) Apply(_ context.Context, c backend.Component) (backend.State, error) {
-	f.calls = append(f.calls, "apply "+c.Key()+" "+c.ArtifactName)
+	f.calls = append(f.calls, "apply "+c.Key()+" "+c.ChartDir)
 	failed := f.failOn[c.Name]
-	f.releases[c.Key()] = append(f.releases[c.Key()], fakeRelease{chart: c.ArtifactName, failed: failed})
+	f.releases[c.Key()] = append(f.releases[c.Key()], fakeRelease{chart: c.ChartDir, failed: failed})
 	st := f.state(c.Key())
 	if failed {
 		st.Message = "pods crashlooping"
@@ -110,8 +110,8 @@ func (f *fakeBackend) chartOf(key string) string {
 type fakePreparer struct{}
 
 func (fakePreparer) Prepare(_ context.Context, src *v1alpha1.PackageSource, _ *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
-	c.ArtifactName = comp.Name + "@" + sourceVersion(src)
-	return "sha256:" + c.ArtifactName, nil
+	c.ChartDir = comp.Name + "@" + sourceVersion(src)
+	return "sha256:" + c.ChartDir, nil
 }
 
 type fakeAPIs map[string]bool
@@ -467,5 +467,52 @@ func TestMetaPackageIsReadyWhenItsMembersAre(t *testing.T) {
 		if strings.Contains(c, "ns-distro") {
 			t.Fatalf("a meta package installed something itself: %v", e.be.calls)
 		}
+	}
+}
+
+// slowBackend is asynchronous: a release reports ready only once its
+// component is listed in ready.
+type slowBackend struct {
+	*fakeBackend
+	ready map[string]bool
+}
+
+func (s *slowBackend) Apply(ctx context.Context, c backend.Component) (backend.State, error) {
+	st, err := s.fakeBackend.Apply(ctx, c)
+	st.Ready, st.Progressing = s.ready[c.Name], !s.ready[c.Name]
+	return st, err
+}
+
+func (s *slowBackend) Status(ctx context.Context, c backend.Component) (backend.State, error) {
+	st, err := s.fakeBackend.Status(ctx, c)
+	st.Ready, st.Progressing = s.ready[c.Name], !s.ready[c.Name]
+	return st, err
+}
+
+func TestAsyncComponentsGoInDependencyOrder(t *testing.T) {
+	e := newEnv(t)
+	slow := &slowBackend{fakeBackend: e.be, ready: map[string]bool{}}
+	e.r.Backend = slow
+	src := mkSource("virt", "1.0.0", false, "operator", "cr")
+	src.Spec.Variants[0].Components[1].Install.DependsOn = []string{"operator"}
+	e.create(src, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "virt"}})
+
+	e.reconcile("virt")
+	e.reconcile("virt")
+	for _, c := range e.be.calls {
+		if strings.Contains(c, "/cr ") {
+			t.Fatalf("cr applied before operator was ready: %v", e.be.calls)
+		}
+	}
+	if ok, r, _ := ready(e.pkg("virt")); ok || r != v1alpha1.ReasonProgressing {
+		t.Fatalf("want Progressing, got ready=%v %s", ok, r)
+	}
+
+	slow.ready["operator"] = true
+	e.reconcile("virt")
+	slow.ready["cr"] = true
+	e.reconcile("virt")
+	if ok, r, msg := ready(e.pkg("virt")); !ok {
+		t.Fatalf("not ready once both components are: %s %s", r, msg)
 	}
 }

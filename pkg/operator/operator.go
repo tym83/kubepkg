@@ -32,6 +32,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,6 +41,7 @@ import (
 
 	"github.com/tym83/kubepkg/api/v1alpha1"
 	"github.com/tym83/kubepkg/pkg/backend"
+	"github.com/tym83/kubepkg/pkg/backend/argo"
 	"github.com/tym83/kubepkg/pkg/backend/flux"
 	"github.com/tym83/kubepkg/pkg/backend/helm"
 	"github.com/tym83/kubepkg/pkg/controller"
@@ -73,6 +75,10 @@ type Options struct {
 	IndexFetchers repo.Fetchers
 	Policy        repo.Policy
 
+	// ArgoNamespace and ArgoProject place Applications (argo backend).
+	ArgoNamespace string
+	ArgoProject   string
+
 	CacheDir       string
 	RegistryConfig string
 	PlainHTTP      bool
@@ -90,7 +96,7 @@ func DefaultOptions() *Options {
 	return &Options{
 		Profile:       controller.DefaultProfile(),
 		Backend:       "helm",
-		Backends:      map[string]BackendFactory{"helm": HelmBackend, "flux": FluxBackend},
+		Backends:      map[string]BackendFactory{"helm": HelmBackend, "flux": FluxBackend, "argo": ArgoBackend},
 		AddToScheme:   []func(*runtime.Scheme) error{helmv2.AddToScheme},
 		IndexFetchers: repo.DefaultFetchers(),
 		Policy:        repo.AllowAll{},
@@ -112,10 +118,11 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.Profile.ValuesSecret, "values-secret", o.Profile.ValuesSecret, "namespace/name of a Secret whose values.yaml is layered under every component's values")
 	fs.Var((*labelsFlag)(&o.Profile.NamespaceLabels), "namespace-label", "label key=value put on every namespace packages create (repeatable)")
 	fs.StringVar(&o.Backend, "backend", o.Backend, "backend: "+strings.Join(names, ", "))
+	fs.StringVar(&o.ArgoNamespace, "argo-namespace", o.ArgoNamespace, "namespace Argo CD watches for Applications (argo backend, default argocd)")
+	fs.StringVar(&o.ArgoProject, "argo-project", o.ArgoProject, "Argo CD project of the Applications (argo backend, default default)")
 	fs.StringVar(&o.CacheDir, "cache-dir", o.CacheDir, "where package trees and charts are kept (helm backend)")
 	fs.StringVar(&o.RegistryConfig, "registry-config", o.RegistryConfig, "Docker config file with registry credentials")
 	fs.BoolVar(&o.PlainHTTP, "plain-http", o.PlainHTTP, "talk to OCI registries without TLS (local test registries only)")
-	fs.StringVar(&o.Profile.ArtifactNamespace, "artifact-namespace", o.Profile.ArtifactNamespace, "namespace of Flux chart artifacts (flux backend)")
 	fs.StringVar(&o.MetricsAddr, "metrics-bind-address", o.MetricsAddr, "metrics endpoint")
 	fs.StringVar(&o.ProbeAddr, "health-probe-bind-address", o.ProbeAddr, "health probe endpoint")
 	fs.BoolVar(&o.LeaderElect, "leader-elect", o.LeaderElect, "enable leader election")
@@ -137,9 +144,19 @@ func HelmBackend(env Env) (backend.Backend, controller.Preparer, error) {
 	}, nil
 }
 
-// FluxBackend renders Flux HelmReleases.
+// FluxBackend installs through Flux: an OCIRepository or HelmRepository
+// and a HelmRelease per component.
 func FluxBackend(env Env) (backend.Backend, controller.Preparer, error) {
-	return &flux.Backend{Client: env.Client}, &controller.FluxPreparer{ArtifactNamespace: env.Options.Profile.ArtifactNamespace}, nil
+	return &flux.Backend{Client: env.Client, Insecure: env.Options.PlainHTTP}, controller.ChartPreparer{}, nil
+}
+
+// ArgoBackend installs through Argo CD: an Application per component.
+func ArgoBackend(env Env) (backend.Backend, controller.Preparer, error) {
+	secrets, err := kubernetes.NewForConfig(env.Config)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &argo.Backend{Client: env.Client, Secrets: secrets, Namespace: env.Options.ArgoNamespace, Project: env.Options.ArgoProject}, controller.ChartPreparer{}, nil
 }
 
 // Run starts the operator and blocks until ctx is done.

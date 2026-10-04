@@ -31,13 +31,10 @@ import (
 	"helm.sh/helm/v4/pkg/kube"
 	"helm.sh/helm/v4/pkg/release"
 	"helm.sh/helm/v4/pkg/storage/driver"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/yaml"
 
 	"github.com/tym83/kubepkg/pkg/backend"
-	"github.com/tym83/kubepkg/pkg/source"
 )
 
 // Helm release statuses, as strings to avoid depending on the internal
@@ -101,7 +98,7 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 	if err != nil {
 		return backend.State{}, err
 	}
-	values, err := b.values(ctx, c)
+	values, err := backend.ResolveValues(ctx, b.secrets, c)
 	if err != nil {
 		return backend.State{}, err
 	}
@@ -143,31 +140,6 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 		return b.stateAfter(ctx, c, fmt.Errorf("upgrade %s: %w", c.Key(), err))
 	}
 	return b.Status(ctx, c)
-}
-
-// values layers the component's values over the values.yaml of each
-// ValuesFromSecrets Secret, named namespace/name or, like Flux valuesFrom,
-// by name alone in the release namespace.
-// A missing Secret is an error: installing without platform settings would
-// produce a release that looks healthy and is configured wrong.
-func (b *Backend) values(ctx context.Context, c backend.Component) (map[string]any, error) {
-	out := map[string]any{}
-	for _, ref := range c.ValuesFromSecrets {
-		ns, name, ok := strings.Cut(ref, "/")
-		if !ok {
-			ns, name = c.Namespace, ref
-		}
-		sec, err := b.secrets.CoreV1().Secrets(ns).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("values secret %s/%s: %w", ns, name, err)
-		}
-		var v map[string]any
-		if err := yaml.Unmarshal(sec.Data["values.yaml"], &v); err != nil {
-			return nil, fmt.Errorf("values secret %s/%s: %w", ns, name, err)
-		}
-		out = source.MergeValues(out, v)
-	}
-	return source.MergeValues(out, c.Values), nil
 }
 
 // stateAfter returns the release state together with the error that ended

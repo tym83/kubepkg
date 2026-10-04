@@ -31,8 +31,6 @@ type Profile struct {
 	// AnnotationSkipPlatformValues. It lets a platform pass cluster-wide
 	// settings to every package.
 	ValuesSecret string
-	// ArtifactNamespace holds Flux chart artifacts (flux backend).
-	ArtifactNamespace string
 	// NamespaceLabels are put on every namespace the packages create.
 	NamespaceLabels map[string]string
 }
