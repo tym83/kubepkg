@@ -1,0 +1,5 @@
+# emulation runs virtual machines without /dev/kvm, slowly: for clusters
+# without hardware virtualization, such as CI and nested test clusters.
+emulation: false
+featureGates: []
+imagePullPolicy: IfNotPresent

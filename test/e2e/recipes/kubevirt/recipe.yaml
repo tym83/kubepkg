@@ -1,0 +1,36 @@
+apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: kubevirt
+  annotations:
+    kubepkg.dev/description: Virtual machines on Kubernetes
+    kubepkg.dev/home: https://kubevirt.io
+spec:
+  version: 1.9.0
+  build: 1
+  sources:
+    operator:
+      url: https://github.com/kubevirt/kubevirt/releases/download/v1.9.0/kubevirt-operator.yaml
+      sha256: f11307caafc3c23ffedf9887d8beb5a4419e2694da242fa68f63d1ec820de2e0
+    kubevirt:
+      dir: charts/kubevirt
+  charts:
+    kubevirt-operator:
+      from: [operator]
+      exclude: [{kind: Namespace}]
+    kubevirt:
+      from: [kubevirt]
+  package:
+    provides: [kubevirt, "api:kubevirt.io/v1"]
+    crds: [kubevirts.kubevirt.io]
+    rollback:
+      safe: false   # KubeVirt does not support downgrades
+    variants:
+      - name: default
+        components:
+          - name: operator
+            path: kubevirt-operator
+            install: {namespace: kubevirt}
+          - name: kubevirt
+            path: kubevirt
+            install: {namespace: kubevirt, dependsOn: [operator]}

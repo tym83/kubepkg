@@ -1,0 +1,274 @@
+/*
+Copyright 2026 The kubepkg Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package build
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"helm.sh/helm/v4/pkg/chart/common"
+	"helm.sh/helm/v4/pkg/chart/common/util"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	"helm.sh/helm/v4/pkg/engine"
+
+	"github.com/tym83/kubepkg/pkg/source"
+)
+
+const operatorYAML = `apiVersion: v1
+kind: Namespace
+metadata: {name: virt}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: alerts, namespace: virt}
+data:
+  rule: "{{ $labels.instance }} is down"
+`
+
+const crYAML = "apiVersion: example.org/v1\nkind: Virt\nmetadata: {name: virt, namespace: virt}\n"
+
+func sum(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
+}
+
+func targz(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, n := range []string{"src/deploy/a.yaml", "src/deploy/b.yaml", "src/README"} {
+		if body, ok := files[n]; ok {
+			if err := tw.WriteHeader(&tar.Header{Name: n, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tw.Write([]byte(body)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func writeFile(t *testing.T, p, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fixture serves upstream files and writes a recipe using them.
+func fixture(t *testing.T, operatorSum string) string {
+	t.Helper()
+	archive := targz(t, map[string]string{
+		"src/deploy/a.yaml": "apiVersion: v1\nkind: ServiceAccount\nmetadata: {name: a, namespace: virt}\n",
+		"src/deploy/b.yaml": "apiVersion: v1\nkind: ServiceAccount\nmetadata: {name: b, namespace: virt}\n",
+		"src/README":        "not a manifest",
+	})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/operator.yaml", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(operatorYAML)) })
+	mux.HandleFunc("/v1/cr.yaml", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(crYAML)) })
+	mux.HandleFunc("/v1/src.tar.gz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(archive) })
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	if operatorSum == "" {
+		operatorSum = sum([]byte(operatorYAML))
+	}
+
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "recipe.yaml"), `apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: virt
+  annotations: {kubepkg.dev/description: Virtual machines}
+spec:
+  version: 1.4.0
+  build: 2
+  sources:
+    operator: {url: "`+srv.URL+`/v1/operator.yaml", sha256: "`+operatorSum+`"}
+    cr: {url: "`+srv.URL+`/v1/cr.yaml", sha256: "`+sum([]byte(crYAML))+`"}
+    accounts: {url: "`+srv.URL+`/v1/src.tar.gz", sha256: "`+sum(archive)+`", path: src/deploy}
+    ui: {dir: charts/ui}
+  charts:
+    virt-operator: {from: [operator, accounts], exclude: [{kind: Namespace}]}
+    virt: {from: [cr]}
+    ui:
+      from: [ui]
+      values: {replicas: 2, image: {tag: "1.4.0"}}
+      overlay: overlay/ui
+  package:
+    provides: [virt]
+    variants:
+      - name: default
+        components:
+          - {name: operator, path: virt-operator, install: {namespace: virt}}
+          - {name: virt, path: virt, install: {namespace: virt, dependsOn: [operator]}}
+          - {name: ui, path: ui, install: {namespace: virt}}
+`)
+	writeFile(t, filepath.Join(dir, "charts/ui/Chart.yaml"), "apiVersion: v2\nname: ui\nversion: 0.3.0\n")
+	writeFile(t, filepath.Join(dir, "charts/ui/values.yaml"), "replicas: 1\nimage: {repository: example.org/ui, tag: latest}\n")
+	writeFile(t, filepath.Join(dir, "charts/ui/templates/cm.yaml"), "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: ui}\n")
+	writeFile(t, filepath.Join(dir, "overlay/ui/templates/extra.yaml"), "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: extra}\n")
+	return dir
+}
+
+func render(t *testing.T, chartDir string) string {
+	t.Helper()
+	ch, err := loader.Load(chartDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vals, err := util.ToRenderValues(ch, map[string]any{}, common.ReleaseOptions{Name: "r", Namespace: "virt"}, common.DefaultCapabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := engine.Render(ch, vals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for _, k := range []string{filepath.Base(chartDir) + "/templates/manifests.yaml"} {
+		b.WriteString(out[k])
+	}
+	return b.String()
+}
+
+func TestBuildWrapsManifestsAndKeepsCharts(t *testing.T) {
+	dir := fixture(t, "")
+	res, err := Build(context.Background(), dir, Options{Fetcher: &source.Fetcher{CacheDir: t.TempDir()}, WorkDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := render(t, filepath.Join(res.TreeDir, "virt-operator"))
+	for _, want := range []string{"name: alerts", "name: a", "name: b", `"{{ $labels.instance }} is down"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered operator chart lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "kind: Namespace") {
+		t.Error("excluded Namespace was kept")
+	}
+	if strings.Index(got, "name: alerts") > strings.Index(got, "name: a") {
+		t.Error("manifests are not applied in the order the recipe gives")
+	}
+	if strings.Contains(got, "not a manifest") {
+		t.Error("non-YAML files from the archive were wrapped")
+	}
+
+	values, err := os.ReadFile(filepath.Join(res.TreeDir, "ui", "values.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"replicas: 2", "tag: 1.4.0", "repository: example.org/ui"} {
+		if !strings.Contains(string(values), want) {
+			t.Errorf("ui values lack %q:\n%s", want, values)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(res.TreeDir, "ui", "templates", "extra.yaml")); err != nil {
+		t.Error("overlay not applied")
+	}
+
+	src := res.Source
+	if src.Name != "virt" || src.Spec.Version != "1.4.0" || src.Spec.Build != 2 || src.Annotations["kubepkg.dev/description"] != "Virtual machines" {
+		t.Errorf("package source: %+v", src)
+	}
+}
+
+func TestBuildIsReproducible(t *testing.T) {
+	dir := fixture(t, "")
+	digest := func() string {
+		res, err := Build(context.Background(), dir, Options{Fetcher: &source.Fetcher{CacheDir: t.TempDir()}, WorkDir: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := source.Pack(res.TreeDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sum(raw)
+	}
+	if a, b := digest(), digest(); a != b {
+		t.Fatalf("two builds of one recipe differ: %s %s", a, b)
+	}
+}
+
+func TestBuildRefusesChangedUpstream(t *testing.T) {
+	dir := fixture(t, strings.Repeat("0", 64))
+	_, err := Build(context.Background(), dir, Options{Fetcher: &source.Fetcher{CacheDir: t.TempDir()}, WorkDir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "pins") {
+		t.Fatalf("want a sha256 mismatch, got %v", err)
+	}
+}
+
+func TestRecipeChecks(t *testing.T) {
+	base := `apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata: {name: x}
+spec:
+  version: 1.0.0
+  sources:
+    s: {url: "https://example.org/a.yaml", sha256: "` + strings.Repeat("a", 64) + `"}
+  charts:
+    c: {from: [s]}
+  package:
+    variants: [{name: default, components: [{name: c, path: c, install: {namespace: x}}]}]
+`
+	cases := map[string]string{
+		"range version":        strings.Replace(base, "version: 1.0.0", "version: \"~1.0\"", 1),
+		"url without sha256":   strings.Replace(base, `, sha256: "`+strings.Repeat("a", 64)+`"`, "", 1),
+		"unknown source":       strings.Replace(base, "from: [s]", "from: [nope]", 1),
+		"component not built":  strings.Replace(base, "path: c,", "path: other,", 1),
+		"version in package":   strings.Replace(base, "  package:\n", "  package:\n    version: 2.0.0\n", 1),
+		"upstream chart as is": strings.Replace(base, "path: c,", `chart: {repository: "https://e.org", name: c, version: 1.0.0},`, 1),
+		"typo":                 strings.Replace(base, "charts:", "chart:", 1),
+		"exclude everything":   strings.Replace(base, "c: {from: [s]}", "c: {from: [s], exclude: [{}]}", 1),
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, filepath.Join(dir, RecipeFile), body)
+			if _, err := LoadRecipe(dir); err == nil {
+				t.Fatal("accepted")
+			}
+		})
+	}
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, RecipeFile), base)
+	if _, err := LoadRecipe(dir); err != nil {
+		t.Fatalf("valid recipe rejected: %v", err)
+	}
+}

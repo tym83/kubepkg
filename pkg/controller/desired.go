@@ -1,0 +1,361 @@
+/*
+Copyright 2026 The kubepkg Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controller
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"path"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/pkg/backend"
+	"github.com/tym83/kubepkg/pkg/resolve"
+	"github.com/tym83/kubepkg/pkg/source"
+)
+
+// Preparer puts a component's chart where the backend can read it.
+type Preparer interface {
+	// Prepare fills the chart location in c and returns a digest that
+	// changes whenever the chart content changes.
+	Prepare(ctx context.Context, src *v1alpha1.PackageSource, variant *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error)
+}
+
+// OCIPreparer puts charts on disk for the helm backend: published charts
+// are downloaded as they are, charts in a package tree are composed from
+// the tree.
+type OCIPreparer struct {
+	Fetcher *source.Fetcher
+	WorkDir string
+}
+
+// Prepare implements Preparer.
+func (p *OCIPreparer) Prepare(ctx context.Context, src *v1alpha1.PackageSource, variant *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
+	if ch := comp.Chart; ch != nil {
+		dir, digest, err := p.Fetcher.FetchChart(ctx, source.Chart{Repository: ch.Repository, Name: ch.Name, Version: ch.Version, Digest: ch.Digest})
+		if err != nil {
+			return "", err
+		}
+		c.ChartDir = dir
+		return digest, nil
+	}
+	ref := src.Spec.SourceRef
+	if ref == nil || ref.Kind != v1alpha1.SourceKindOCIArtifact {
+		kind := "none"
+		if ref != nil {
+			kind = ref.Kind
+		}
+		return "", fmt.Errorf("source kind %s needs the flux backend; the helm backend reads OCIArtifact sources", kind)
+	}
+	tree, treeDigest, err := p.Fetcher.Fetch(ctx, ref.URL)
+	if err != nil {
+		return "", err
+	}
+	libs := map[string]string{}
+	byName := libraryPaths(variant)
+	for _, l := range comp.Libraries {
+		lp, ok := byName[l]
+		if !ok {
+			return "", fmt.Errorf("component %s uses library %s, which variant %s does not define", comp.Name, l, variant.Name)
+		}
+		libs[l] = lp
+	}
+	short := strings.TrimPrefix(treeDigest, "sha256:")
+	if len(short) > 16 {
+		short = short[:16]
+	}
+	dst := filepath.Join(p.WorkDir, src.Name, variant.Name, comp.Name, short)
+	dir, digest, err := source.Compose(tree, ref.Path, source.ChartSpec{Path: comp.Path, Libraries: libs, ValuesFiles: comp.ValuesFiles}, dst)
+	if err != nil {
+		return "", fmt.Errorf("compose %s: %w", comp.Name, err)
+	}
+	c.ChartDir = dir
+	return digest, nil
+}
+
+// libraryPaths maps library names to paths; a library without a name is
+// known by the last element of its path.
+func libraryPaths(v *v1alpha1.Variant) map[string]string {
+	out := map[string]string{}
+	for _, l := range v.Libraries {
+		name := l.Name
+		if name == "" {
+			name = path.Base(strings.TrimSuffix(l.Path, "/"))
+		}
+		out[name] = l.Path
+	}
+	return out
+}
+
+// FluxPreparer points components at the ExternalArtifacts Flux builds from
+// the PackageSource.
+type FluxPreparer struct {
+	ArtifactNamespace string
+}
+
+// ArtifactName is <packagesource>-<variant>-<component> with dots replaced.
+func ArtifactName(src, variant, comp string) string {
+	r := strings.NewReplacer(".", "-")
+	return fmt.Sprintf("%s-%s-%s", r.Replace(src), r.Replace(variant), r.Replace(comp))
+}
+
+// Prepare implements Preparer.
+func (p *FluxPreparer) Prepare(_ context.Context, src *v1alpha1.PackageSource, variant *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
+	if comp.Chart != nil {
+		return "", fmt.Errorf("component %s: the flux backend does not install published charts yet", comp.Name)
+	}
+	c.ArtifactName = ArtifactName(src.Name, variant.Name, comp.Name)
+	c.ArtifactNamespace = p.ArtifactNamespace
+	// Flux follows chart content on its own; a change of the source spec is
+	// what makes a new package revision.
+	return digestOf(struct {
+		Spec      v1alpha1.PackageSourceSpec
+		Component string
+	}{src.Spec, comp.Name})
+}
+
+// desiredState is everything one package revision will apply.
+type desiredState struct {
+	version      string
+	variant      string
+	rollbackSafe bool
+	components   []desiredComponent
+	// digest identifies the desired state: Package spec, the retry
+	// annotation and the PackageSource spec. Chart content is not part of
+	// it; a tag that moves under the same spec is picked up by the
+	// component digests instead.
+	digest string
+}
+
+type desiredComponent struct {
+	snapshot v1alpha1.ComponentSnapshot
+	backend  backend.Component
+}
+
+func digestOf(v any) (string, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+func variantName(pkg *v1alpha1.Package) string {
+	if pkg.Spec.Variant == "" {
+		return "default"
+	}
+	return pkg.Spec.Variant
+}
+
+func findVariant(src *v1alpha1.PackageSource, name string) *v1alpha1.Variant {
+	for i := range src.Spec.Variants {
+		if src.Spec.Variants[i].Name == name {
+			return &src.Spec.Variants[i]
+		}
+	}
+	return nil
+}
+
+func sourceVersion(src *v1alpha1.PackageSource) string {
+	if src.Spec.Version == "" {
+		return resolve.Unversioned
+	}
+	return src.Spec.Version
+}
+
+// enabledComponents lists installable components the Package did not turn off.
+func enabledComponents(pkg *v1alpha1.Package, v *v1alpha1.Variant) []v1alpha1.Component {
+	var out []v1alpha1.Component
+	for _, c := range v.Components {
+		if c.Install == nil {
+			continue
+		}
+		if o, ok := pkg.Spec.Components[c.Name]; ok && o.Enabled != nil && !*o.Enabled {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+func releaseName(c v1alpha1.Component) string {
+	if c.Install.ReleaseName != "" {
+		return c.Install.ReleaseName
+	}
+	return c.Name
+}
+
+// buildDesired computes the desired state of a package. depReleases maps a
+// package this one depends on to its releases (namespace/name), for the flux
+// backend's dependsOn.
+func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Package, src *v1alpha1.PackageSource, v *v1alpha1.Variant, depReleases []string) (*desiredState, error) {
+	d := &desiredState{
+		version:      sourceVersion(src),
+		variant:      v.Name,
+		rollbackSafe: src.Spec.Rollback != nil && src.Spec.Rollback.Safe,
+	}
+	var err error
+	d.digest, err = digestOf(struct {
+		Package v1alpha1.PackageSpec
+		Retry   string
+		Source  v1alpha1.PackageSourceSpec
+	}{pkg.Spec, pkg.Annotations[AnnotationRetry], src.Spec})
+	if err != nil {
+		return nil, err
+	}
+
+	comps := enabledComponents(pkg, v)
+	byName := map[string]v1alpha1.Component{}
+	for _, c := range comps {
+		if c.Install.Namespace == "" {
+			return nil, fmt.Errorf("component %s has empty namespace in Install section", c.Name)
+		}
+		byName[c.Name] = c
+	}
+	order, err := topoOrder(comps)
+	if err != nil {
+		return nil, err
+	}
+	timeout := 10 * time.Minute
+	if pkg.Spec.Upgrade != nil && pkg.Spec.Upgrade.Timeout != nil {
+		timeout = pkg.Spec.Upgrade.Timeout.Duration
+	}
+	skipValues := src.Annotations[AnnotationSkipPlatformValues] == "true"
+
+	for _, name := range order {
+		c := byName[name]
+		values := map[string]any{}
+		if o, ok := pkg.Spec.Components[c.Name]; ok && o.Values != nil && len(o.Values.Raw) > 0 {
+			if err := json.Unmarshal(o.Values.Raw, &values); err != nil {
+				return nil, fmt.Errorf("values of component %s: %w", c.Name, err)
+			}
+		}
+		bc := backend.Component{
+			Package:          pkg.Name,
+			Name:             c.Name,
+			ReleaseName:      releaseName(c),
+			Namespace:        c.Install.Namespace,
+			Values:           values,
+			Labels:           map[string]string{v1alpha1.LabelPackage: pkg.Name},
+			UpgradeCRDs:      c.Install.UpgradeCRDs,
+			WaitStrategy:     c.Install.WaitStrategy,
+			HealthCheckExprs: c.Install.HealthCheckExprs,
+			Timeout:          timeout,
+		}
+		if c.Install.Privileged {
+			bc.Labels[r.Profile.Group+"/privileged"] = "true"
+		}
+		if r.Profile.ValuesSecret != "" && !skipValues {
+			bc.ValuesFromSecrets = []string{r.Profile.ValuesSecret}
+		}
+		if len(c.ValuesFiles) > 0 {
+			bc.Annotations = map[string]string{AnnotationValuesFiles: strings.Join(c.ValuesFiles, ",")}
+		}
+		for _, dep := range c.Install.DependsOn {
+			dc, ok := byName[dep]
+			if !ok {
+				return nil, fmt.Errorf("component %s not found in variant for dependency %s", dep, c.Name)
+			}
+			bc.DependsOn = append(bc.DependsOn, dc.Install.Namespace+"/"+releaseName(dc))
+		}
+		bc.DependsOn = append(bc.DependsOn, depReleases...)
+
+		comp := c
+		chartDigest, err := r.Preparer.Prepare(ctx, src, v, &comp, &bc)
+		if err != nil {
+			return nil, err
+		}
+		valuesDigest, err := digestOf(values)
+		if err != nil {
+			return nil, err
+		}
+		d.components = append(d.components, desiredComponent{
+			snapshot: v1alpha1.ComponentSnapshot{
+				Name:         c.Name,
+				ReleaseName:  bc.ReleaseName,
+				Namespace:    bc.Namespace,
+				DependsOn:    c.Install.DependsOn,
+				ChartDigest:  chartDigest,
+				ValuesDigest: valuesDigest,
+			},
+			backend: bc,
+		})
+	}
+	return d, nil
+}
+
+// topoOrder sorts components so dependencies come first; ties keep the
+// PackageSource order. A cycle is an error, not something to guess around.
+func topoOrder(comps []v1alpha1.Component) ([]string, error) {
+	index := map[string]int{}
+	for i, c := range comps {
+		index[c.Name] = i
+	}
+	state := map[string]int{} // 0 new, 1 visiting, 2 done
+	var out []string
+	var visit func(name string, chain []string) error
+	visit = func(name string, chain []string) error {
+		switch state[name] {
+		case 1:
+			return fmt.Errorf("components depend on each other in a cycle: %s", strings.Join(append(chain, name), " -> "))
+		case 2:
+			return nil
+		}
+		state[name] = 1
+		deps := append([]string(nil), comps[index[name]].Install.DependsOn...)
+		sort.SliceStable(deps, func(i, j int) bool { return index[deps[i]] < index[deps[j]] })
+		for _, d := range deps {
+			if _, ok := index[d]; !ok {
+				continue // disabled or unknown; reported by buildDesired
+			}
+			if err := visit(d, append(chain, name)); err != nil {
+				return err
+			}
+		}
+		state[name] = 2
+		out = append(out, name)
+		return nil
+	}
+	for _, c := range comps {
+		if err := visit(c.Name, nil); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// sameComponents reports whether a revision already recorded this state.
+func sameComponents(a []v1alpha1.ComponentSnapshot, b []desiredComponent) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		x, y := a[i], b[i].snapshot
+		if x.Name != y.Name || x.ReleaseName != y.ReleaseName || x.Namespace != y.Namespace ||
+			x.ChartDigest != y.ChartDigest || x.ValuesDigest != y.ValuesDigest {
+			return false
+		}
+	}
+	return true
+}
