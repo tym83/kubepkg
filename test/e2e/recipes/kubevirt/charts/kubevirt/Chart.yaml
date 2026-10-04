@@ -1,0 +1,4 @@
+apiVersion: v2
+name: kubevirt
+description: The KubeVirt resource that configures and deploys KubeVirt
+version: 1.9.0
