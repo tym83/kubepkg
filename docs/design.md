@@ -349,7 +349,9 @@ Built packages are ordinary Helm charts in OCI registries, so any tool that inst
 - `--format argo`: `Application`s with sync waves, for an app of apps.
 - `--format helmfile`: releases with `needs`.
 
-Packages come from `--repo` indexes or the cluster's repositories; package defaults apply, and values are set in the output. What the operator adds on top — revisions, whole-package rollback, CRD ownership, requirement checks at runtime — is not part of the rendered output.
+Packages come from `--repo` indexes or the cluster's repositories; package defaults apply, and values are set in the output.
+
+werf has no render format. It deploys one release per project into one namespace, while a package is often several releases in several namespaces, so an umbrella chart would install many packages wrongly while looking right. werf projects use the published charts directly, as dependencies in their own chart, and choose versions from the index themselves; kubepkg's ordering, requirements and signature checks do not apply there. If werf support is needed beyond that, the honest form is an operator backend that runs werf for each component, like the flux and argo backends. What the operator adds on top — revisions, whole-package rollback, CRD ownership, requirement checks at runtime — is not part of the rendered output.
 
 ## Embedding in a platform
 
