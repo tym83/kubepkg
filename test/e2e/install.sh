@@ -6,6 +6,9 @@
 #
 #   KUBECONFIG, KUBE_CONTEXT   the cluster (the context is required)
 #   IMAGE_TAG                  operator image tag in ghcr.io/tym83/kubepkg-operator
+#   CHART, CHART_VERSION       the chart: default the one in this checkout;
+#                              oci://ghcr.io/tym83/charts/kubepkg and a version
+#                              for a release
 #   INDEX                      repository index URL
 #   PUBLIC_KEY                 file with the key the index is signed with
 #   PACKAGES                   packages to install (default: cert-manager virtualization)
@@ -15,6 +18,9 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 : "${KUBE_CONTEXT:?set KUBE_CONTEXT}" "${IMAGE_TAG:?set IMAGE_TAG}"
+CHART=${CHART:-${ROOT}/charts/kubepkg}
+chart_version=()
+[[ -n "${CHART_VERSION:-}" ]] && chart_version=(--version "${CHART_VERSION}")
 INDEX=${INDEX:-https://tym83.github.io/kubepkg-recipes/index.yaml}
 PACKAGES=${PACKAGES:-cert-manager virtualization}
 WORK=$(mktemp -d)
@@ -55,7 +61,7 @@ step "build the CLI"
 step "1. install kubepkg with its chart, subscribed to a signed repository"
 key=${PUBLIC_KEY:-${WORK}/index.pub}
 [[ -n "${PUBLIC_KEY:-}" ]] || curl -fsSL https://raw.githubusercontent.com/tym83/kubepkg-recipes/main/keys/index.pub -o "${key}"
-${H} upgrade --install kubepkg "${ROOT}/charts/kubepkg" -n "${NS}" --create-namespace --wait --timeout 5m \
+${H} upgrade --install kubepkg "${CHART}" ${chart_version[@]+"${chart_version[@]}"} -n "${NS}" --create-namespace --wait --timeout 5m \
   --set image.tag="${IMAGE_TAG}" \
   --set 'repositories[0].name=main' --set "repositories[0].url=${INDEX}" \
   --set-file 'repositories[0].publicKeys[0]'="${key}" >/dev/null || fail "chart did not install"
