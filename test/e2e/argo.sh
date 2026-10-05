@@ -26,9 +26,11 @@ if [[ -z "${CHART_HOST:-}" ]]; then
   if command -v colima >/dev/null && colima status >/dev/null 2>&1; then
     CHART_HOST=$(colima ssh -- getent hosts host.lima.internal | awk '{print $1}')
   else
-    CHART_HOST=$(docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}')
+    # The first IPv4 gateway: the network may list an IPv6 range first.
+    CHART_HOST=$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Gateway}} {{end}}' | tr ' ' '\n' | grep -m1 -v ':' || true)
   fi
 fi
+[[ -n "${CHART_HOST}" ]] || fail "cannot tell how the cluster reaches this machine; set CHART_HOST"
 CHARTS="http://${CHART_HOST}:${WWW_PORT}"
 
 diagnose() {
