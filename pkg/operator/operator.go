@@ -47,6 +47,7 @@ import (
 	"github.com/tym83/kubepkg/pkg/controller"
 	"github.com/tym83/kubepkg/pkg/repo"
 	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/tym83/kubepkg/pkg/version"
 )
 
 // Env is what a backend factory gets to build its backend.
@@ -216,7 +217,7 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		return err
 	}
-	ctrl.Log.WithName("setup").Info("starting", "apiGroup", o.Profile.Group, "backend", o.Backend)
+	ctrl.Log.WithName("setup").Info("starting", "version", version.Version, "apiGroup", o.Profile.Group, "backend", o.Backend)
 	return mgr.Start(ctx)
 }
 

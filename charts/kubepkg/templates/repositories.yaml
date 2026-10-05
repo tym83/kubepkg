@@ -1,0 +1,24 @@
+{{- range .Values.repositories }}
+---
+apiVersion: {{ $.Values.apiGroup }}/v1alpha1
+kind: Repository
+metadata:
+  name: {{ .name }}
+  labels: {{- include "kubepkg.labels" $ | nindent 4 }}
+  annotations:
+    # A hook runs once the CRDs of this release exist; a plain template
+    # would fail to map before they are installed.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  url: {{ .url }}
+  {{- with .priority }}
+  priority: {{ . }}
+  {{- end }}
+  {{- with .interval }}
+  interval: {{ . }}
+  {{- end }}
+  {{- with .publicKeys }}
+  publicKeys: {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

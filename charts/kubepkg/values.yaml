@@ -1,0 +1,55 @@
+image:
+  repository: ghcr.io/tym83/kubepkg-operator
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# How components are installed: helm (in-process, can roll back), flux or argo.
+backend: helm
+
+# The helm backend installs whatever the packages' charts contain, CRDs and
+# cluster roles included; Kubernetes only lets it grant permissions it holds,
+# so it needs cluster-admin. The flux and argo backends hand charts to Flux or
+# Argo CD and get by with the operator's own role; set this to false for them.
+clusterAdmin: true
+
+# API group the kubepkg types are served under.
+apiGroup: kubepkg.dev
+
+# namespace/name of a Secret whose values.yaml is layered under every
+# component's values: platform-wide settings such as a domain or an issuer.
+valuesSecret: ""
+
+# Labels put on every namespace packages create.
+namespaceLabels: {}
+
+argo:
+  namespace: argocd
+  project: default
+
+# Let the operator pull from registries over plain HTTP (test registries only).
+plainHTTP: false
+
+# Repositories to subscribe to, e.g. a distribution's own:
+#   - name: main
+#     url: https://packages.example.org/index.yaml
+#     priority: 10
+#     publicKeys:
+#       - |
+#         -----BEGIN PUBLIC KEY-----
+#         ...
+#         -----END PUBLIC KEY-----
+repositories: []
+
+replicas: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 1Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

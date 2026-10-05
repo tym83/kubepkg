@@ -14,7 +14,14 @@ K="kubectl --context ${KCTX}"
 OPLOG=${WORK}/operator.log
 
 step() { printf '\n=== %s\n' "$*"; }
-fail() { echo "FAIL: $*"; echo "--- operator log (tail)"; tail -n 60 "${OPLOG}" || true; exit 1; }
+fail() {
+  echo "FAIL: $*"
+  echo "--- operator log (tail)"
+  tail -n 60 "${OPLOG}" || true
+  # A suite can define diagnose to print what its tool knows.
+  if declare -F diagnose >/dev/null; then echo "--- diagnose"; diagnose || true; fi
+  exit 1
+}
 
 cleanup() {
   [[ -n "${OP_PID:-}" ]] && kill "${OP_PID}" 2>/dev/null || true

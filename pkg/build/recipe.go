@@ -107,10 +107,20 @@ type Chart struct {
 	// Exclude drops objects from wrapped manifests, e.g. the Namespace an
 	// upstream bundle creates, which kubepkg creates itself.
 	Exclude []Selector `json:"exclude,omitempty"`
+	// Patches change objects of wrapped manifests with JSON merge patches
+	// (RFC 7386; null removes a field): the recipe's equivalent of a
+	// Debian patch to the upstream.
+	Patches []Patch `json:"patches,omitempty"`
 	// Steps run step plugins on the finished chart, in order: what a
 	// distribution needs beyond values and overlays, such as moving images
 	// to its own registry.
 	Steps []PluginCall `json:"steps,omitempty"`
+}
+
+// Patch is a JSON merge patch for the objects Selector matches.
+type Patch struct {
+	Selector `json:",inline"`
+	Merge    map[string]any `json:"merge"`
 }
 
 // Selector matches manifest objects; empty fields match anything.
@@ -171,10 +181,18 @@ func (r *Recipe) check() error {
 				return fmt.Errorf("chart %s: step %d names no plugin", name, i+1)
 			}
 		}
-		if len(c.Exclude) > 0 {
+		for i, p := range c.Patches {
+			if p.Kind == "" && p.Name == "" {
+				return fmt.Errorf("chart %s: patch %d selects nothing in particular; give a kind or a name", name, i+1)
+			}
+			if len(p.Merge) == 0 {
+				return fmt.Errorf("chart %s: patch %d is empty", name, i+1)
+			}
+		}
+		if len(c.Exclude) > 0 || len(c.Patches) > 0 {
 			for _, f := range c.From {
 				if r.Spec.Sources[f].Chart != nil {
-					return fmt.Errorf("chart %s: exclude applies to wrapped manifests, not to source %s, which is a chart", name, f)
+					return fmt.Errorf("chart %s: exclude and patches apply to wrapped manifests, not to source %s, which is a chart", name, f)
 				}
 			}
 			for _, e := range c.Exclude {

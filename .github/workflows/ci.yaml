@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: Chart CRDs match the API
+        run: diff -r config/crd charts/kubepkg/files/crds
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: azure/setup-helm@v4
+      - run: helm lint charts/kubepkg
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [run, flux, argo, kubevirt]
+    name: e2e (${{ matrix.suite }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: End-to-end on kind
+        run: test/e2e/${{ matrix.suite }}.sh

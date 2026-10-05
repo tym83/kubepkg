@@ -20,6 +20,8 @@ limitations under the License.
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -28,6 +30,7 @@ import (
 
 	"github.com/tym83/kubepkg/api/v1alpha1"
 	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/tym83/kubepkg/pkg/version"
 )
 
 // Options configure the root command.
@@ -91,6 +94,15 @@ func NewRootCommand(o Options) *cobra.Command {
 	cl := &cluster{fetchers: o.IndexFetchers, policy: o.Policy}
 	root.PersistentFlags().StringVar(&cl.kubeContext, "context", "", "kubeconfig context (default: the current one)")
 	root.PersistentFlags().StringVar(&cl.apiGroup, "api-group", o.APIGroup, "API group the kubepkg types are served under")
+	root.Version = version.Version
+	root.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print the kubepkg version",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			fmt.Fprintln(cmd.OutOrStdout(), version.Version)
+		},
+	})
 	root.AddCommand(initCmd(), validateCmd(), buildCmd(), pushCmd(), repoCmd(cl), searchCmd(cl), installCmd(cl), planCmd(cl), renderCmd(cl), removeCmd(cl), listCmd(cl), historyCmd(cl), rollbackCmd(cl))
 	return root
 }

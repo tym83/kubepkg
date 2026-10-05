@@ -16,19 +16,28 @@ WWW_PORT=${WWW_PORT:-5007}
 source "$(dirname "$0")/lib.sh"
 HERE=${ROOT}/test/e2e
 
+
+build_binaries
+start_cluster
+
 # CHART_HOST is how the cluster reaches this machine: the lima host under
-# colima, the kind network gateway elsewhere.
+# colima, the kind node's default gateway elsewhere.
 if [[ -z "${CHART_HOST:-}" ]]; then
   if command -v colima >/dev/null && colima status >/dev/null 2>&1; then
     CHART_HOST=$(colima ssh -- getent hosts host.lima.internal | awk '{print $1}')
   else
-    CHART_HOST=$(docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}')
+    # The node's default route leads to this machine.
+    CHART_HOST=$(docker exec "${CLUSTER}-control-plane" ip -4 route show default | awk '{print $3; exit}')
   fi
 fi
+[[ -n "${CHART_HOST}" ]] || fail "cannot tell how the cluster reaches this machine; set CHART_HOST"
 CHARTS="http://${CHART_HOST}:${WWW_PORT}"
 
-build_binaries
-start_cluster
+diagnose() {
+  ${K} -n argocd get applications.argoproj.io -o jsonpath='{range .items[*]}{.metadata.name}: sync={.status.sync.status} health={.status.health.status} op={.status.operationState.phase} {.status.operationState.message} {.status.conditions}{"\n"}{end}'
+  ${K} -n argocd logs deploy/argocd-repo-server --tail=20
+  echo "chart host: ${CHARTS}"
+}
 
 step "1. a Helm repository the cluster can reach"
 mkdir -p "${WORK}/www"
