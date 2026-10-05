@@ -70,6 +70,14 @@ spec:
                   versions they have. Default 0.
                 format: int32
                 type: integer
+              publicKeys:
+                description: |-
+                  PublicKeys are PEM encoded ed25519 keys the index must be signed
+                  with: the signature is fetched from the index URL plus ".sig". With
+                  none, the index is not checked. Several keys allow rotation.
+                items:
+                  type: string
+                type: array
               url:
                 description: |-
                   URL of the index, e.g. https://packages.example.org/index.yaml. The
@@ -139,6 +147,12 @@ spec:
                 type: array
               indexDigest:
                 description: IndexDigest is the sha256 of the last accepted index.
+                type: string
+              indexGenerated:
+                description: |-
+                  IndexGenerated is when the accepted index was built; an older one is
+                  refused.
+                format: date-time
                 type: string
               lastFetched:
                 description: LastFetched is when the index was last fetched successfully.

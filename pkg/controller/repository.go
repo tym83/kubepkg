@@ -95,6 +95,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	rp.Status.Packages = int32(len(idx.Packages))
 	rp.Status.IndexDigest = digest
 	rp.Status.LastFetched = &now
+	rp.Status.IndexGenerated = idx.Generated
 	meta.SetStatusCondition(&rp.Status.Conditions, metav1.Condition{
 		Type: "Ready", Status: metav1.ConditionTrue, Reason: "IndexLoaded",
 		Message: fmt.Sprintf("%d packages", len(idx.Packages)), ObservedGeneration: rp.Generation,
@@ -106,13 +107,17 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 func (r *RepositoryReconciler) load(ctx context.Context, rp *v1alpha1.Repository) (*repo.Index, string, string, error) {
-	raw, err := r.Repositories.Fetchers.Fetch(ctx, rp.Spec.URL)
-	if err != nil {
+	idx, raw, err := repo.LoadIndex(ctx, r.Repositories.Fetchers, rp.Spec.URL, rp.Spec.PublicKeys)
+	switch {
+	case errors.Is(err, repo.ErrBadSignature):
+		return nil, "", "IndexRefused", err
+	case errors.Is(err, repo.ErrInvalidIndex):
+		return nil, "", "InvalidIndex", err
+	case err != nil:
 		return nil, "", "FetchFailed", err
 	}
-	idx, err := repo.Parse(raw)
-	if err != nil {
-		return nil, "", "InvalidIndex", err
+	if seen := rp.Status.IndexGenerated; seen != nil && (idx.Generated == nil || idx.Generated.Before(seen)) {
+		return nil, "", "IndexRefused", fmt.Errorf("index is older than the one accepted before (%s): refusing a rollback", seen.UTC().Format(time.RFC3339))
 	}
 	if err := r.Repositories.Policy.AdmitIndex(ctx, rp.Name, raw, idx); err != nil {
 		return nil, "", "IndexRefused", err

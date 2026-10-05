@@ -42,6 +42,12 @@ type RepositorySpec struct {
 	// Interval between index refreshes. Default 10m.
 	// +optional
 	Interval *metav1.Duration `json:"interval,omitempty"`
+
+	// PublicKeys are PEM encoded ed25519 keys the index must be signed
+	// with: the signature is fetched from the index URL plus ".sig". With
+	// none, the index is not checked. Several keys allow rotation.
+	// +optional
+	PublicKeys []string `json:"publicKeys,omitempty"`
 }
 
 // RepositoryStatus reports the last index fetch.
@@ -57,6 +63,10 @@ type RepositoryStatus struct {
 	// LastFetched is when the index was last fetched successfully.
 	// +optional
 	LastFetched *metav1.Time `json:"lastFetched,omitempty"`
+	// IndexGenerated is when the accepted index was built; an older one is
+	// refused.
+	// +optional
+	IndexGenerated *metav1.Time `json:"indexGenerated,omitempty"`
 }
 
 // +kubebuilder:object:root=true

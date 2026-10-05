@@ -22,6 +22,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -187,5 +188,71 @@ func TestFailedRefreshKeepsTheLoadedIndex(t *testing.T) {
 	e.reconcile("app")
 	if v := e.source("app").Spec.Version; v != "1.0.0" {
 		t.Fatalf("got %s", v)
+	}
+}
+
+func signedIndex(t *testing.T, priv []byte, generated time.Time, versions ...string) ([]byte, []byte) {
+	t.Helper()
+	idx, err := repo.Parse(indexOf(t, versions...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := metav1.NewTime(generated)
+	idx.Generated = &g
+	var buf bytes.Buffer
+	if err := idx.Write(&buf); err != nil {
+		t.Fatal(err)
+	}
+	sig, err := repo.Sign(buf.Bytes(), priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes(), sig
+}
+
+func TestSignedRepositories(t *testing.T) {
+	e := newRepoEnv(t)
+	priv, pub, err := repo.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rp := repository("main", "test://main", 0)
+	rp.Spec.PublicKeys = []string{string(pub)}
+	e.create(rp, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	status := func() (string, string) {
+		t.Helper()
+		got := &v1alpha1.Repository{}
+		if err := e.c.Get(context.Background(), types.NamespacedName{Name: "main"}, got); err != nil {
+			t.Fatal(err)
+		}
+		c := meta.FindStatusCondition(got.Status.Conditions, "Ready")
+		return c.Reason, c.Message
+	}
+
+	// Unsigned: refused.
+	e.indexes["test://main"] = indexOf(t, "1.0.0")
+	e.fetch("main")
+	if r, _ := status(); r != "IndexRefused" {
+		t.Fatalf("unsigned index: %s", r)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	raw, sig := signedIndex(t, priv, now, "1.0.0", "1.1.0")
+	e.indexes["test://main"], e.indexes["test://main.sig"] = raw, sig
+	e.fetch("main")
+	if r, msg := status(); r != "IndexLoaded" {
+		t.Fatalf("signed index: %s %s", r, msg)
+	}
+
+	// An older index, validly signed, is a rollback.
+	raw, sig = signedIndex(t, priv, now.Add(-time.Hour), "1.0.0")
+	e.indexes["test://main"], e.indexes["test://main.sig"] = raw, sig
+	e.fetch("main")
+	if r, msg := status(); r != "IndexRefused" || !strings.Contains(msg, "rollback") {
+		t.Fatalf("older index: %s %s", r, msg)
+	}
+	e.reconcile("app")
+	if v := e.source("app").Spec.Version; v != "1.1.0" {
+		t.Fatalf("the newer accepted index must stay in use, got %s", v)
 	}
 }

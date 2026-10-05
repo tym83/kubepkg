@@ -204,7 +204,7 @@ func WritePlan(w io.Writer, steps []Step) error {
 		if spec.Permissions != nil && spec.Permissions.ClusterWide {
 			notes = append(notes, "needs cluster-wide permissions")
 		}
-		if spec.Rollback == nil || !spec.Rollback.Safe {
+		if (spec.Rollback == nil || !spec.Rollback.Safe) && hasComponents(spec) {
 			notes = append(notes, "not rollback-safe: a failed upgrade is fixed forward, not rolled back")
 		}
 		if s.Action == resolve.ActionDowngrade {
@@ -218,6 +218,16 @@ func WritePlan(w io.Writer, steps []Step) error {
 		}
 	}
 	return nil
+}
+
+// hasComponents is false for a meta package, which has nothing to roll back.
+func hasComponents(spec v1alpha1.PackageSourceSpec) bool {
+	for _, v := range spec.Variants {
+		if len(v.Components) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func dash(s string) string {

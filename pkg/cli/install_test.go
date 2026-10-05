@@ -39,9 +39,11 @@ func (a servedAPIs) Served(context.Context) (map[string]bool, error) { return a,
 
 func spec(version string, requires ...v1alpha1.Requirement) v1alpha1.PackageSourceSpec {
 	return v1alpha1.PackageSourceSpec{
-		Version:  version,
-		CRDs:     []string{"things.example.org"},
-		Variants: []v1alpha1.Variant{{Name: "default", Requires: requires}},
+		Version: version,
+		CRDs:    []string{"things.example.org"},
+		Variants: []v1alpha1.Variant{{Name: "default", Requires: requires, Components: []v1alpha1.Component{
+			{Name: "main", Chart: &v1alpha1.ChartRef{Repository: "oci://example.org/c", Name: "main", Version: version}, Install: &v1alpha1.ComponentInstall{Namespace: "ns"}},
+		}}},
 	}
 }
 
@@ -203,6 +205,17 @@ func TestMetaPackageMovesItsMembers(t *testing.T) {
 		}
 	}
 
+	steps, err := Plan(ctx, c, s, repo.AllowAll{}, servedAPIs{}, "", parseRequests([]string{"distro@~1.0"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := WritePlan(&buf, steps); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "distro: not rollback-safe") {
+		t.Errorf("a meta package has nothing to roll back:\n%s", buf.String())
+	}
 	install("distro@~1.0")
 	if v := version("kubevirt"); v != "~1.9" {
 		t.Fatalf("member constraint after installing the distro: %q", v)

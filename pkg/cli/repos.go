@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"text/tabwriter"
 	"time"
 
@@ -36,6 +37,7 @@ func repoAddCmd(cl *cluster) *cobra.Command {
 	var (
 		priority int32
 		interval time.Duration
+		keyFiles []string
 	)
 	cmd := &cobra.Command{
 		Use:   "add <name> <index-url>",
@@ -46,12 +48,20 @@ func repoAddCmd(cl *cluster) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := cl.fetchers.Fetch(cmd.Context(), args[1]); err != nil {
-				return fmt.Errorf("cannot read the index at %s: %w", args[1], err)
+			var keys []string
+			for _, f := range keyFiles {
+				raw, err := os.ReadFile(f)
+				if err != nil {
+					return err
+				}
+				keys = append(keys, string(raw))
+			}
+			if _, _, err := repo.LoadIndex(cmd.Context(), cl.fetchers, args[1], keys); err != nil {
+				return fmt.Errorf("index at %s: %w", args[1], err)
 			}
 			rp := &v1alpha1.Repository{
 				ObjectMeta: metav1.ObjectMeta{Name: args[0]},
-				Spec:       v1alpha1.RepositorySpec{URL: args[1], Priority: priority},
+				Spec:       v1alpha1.RepositorySpec{URL: args[1], Priority: priority, PublicKeys: keys},
 			}
 			if interval > 0 {
 				rp.Spec.Interval = &metav1.Duration{Duration: interval}
@@ -65,6 +75,7 @@ func repoAddCmd(cl *cluster) *cobra.Command {
 	}
 	cmd.Flags().Int32Var(&priority, "priority", 0, "the highest priority repository carrying a package supplies it")
 	cmd.Flags().DurationVar(&interval, "interval", 0, "how often the operator refreshes the index (default 10m)")
+	cmd.Flags().StringArrayVar(&keyFiles, "public-key", nil, "trust only an index signed with this ed25519 public key file (repeatable)")
 	return cmd
 }
 
@@ -131,15 +142,15 @@ func loadStore(ctx context.Context, c client.Client, fetchers repo.Fetchers, war
 	}
 	store := repo.NewStore()
 	for _, r := range list.Items {
-		raw, err := fetchers.Fetch(ctx, r.Spec.URL)
-		if err == nil {
-			var idx *repo.Index
-			if idx, err = repo.Parse(raw); err == nil {
-				store.Set(r.Name, r.Spec.Priority, idx)
-				continue
-			}
+		idx, _, err := repo.LoadIndex(ctx, fetchers, r.Spec.URL, r.Spec.PublicKeys)
+		if err == nil && r.Status.IndexGenerated != nil && (idx.Generated == nil || idx.Generated.Before(r.Status.IndexGenerated)) {
+			err = fmt.Errorf("index is older than the one the cluster accepted")
 		}
-		fmt.Fprintf(warn, "warning: repository %s left out: %v\n", r.Name, err)
+		if err != nil {
+			fmt.Fprintf(warn, "warning: repository %s left out: %v\n", r.Name, err)
+			continue
+		}
+		store.Set(r.Name, r.Spec.Priority, idx)
 	}
 	return store, nil
 }
