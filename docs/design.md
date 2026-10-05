@@ -371,6 +371,7 @@ Installing and running:
 | `search [term]` | what the repositories offer, from the repository each package is taken from |
 | `install <pkg>[@constraint]...` | resolves the packages and their requirements against the cluster's repositories, shows the plan, and writes one Package per package; requirements already installed are kept, packages pulled in as requirements are marked `kubepkg.dev/dependency`, and without a constraint a package follows patch releases (`~X.Y`) |
 | `plan <pkg>[@constraint]...` | the same plan without changing anything: installs, upgrades, downgrades, CRDs, permissions, rollback safety |
+| `remove <pkg>... [--autoremove]` | deletes Packages, refusing while a package that stays requires one of them, directly or as the only provider of a capability; `--autoremove` also removes packages installed as requirements that nothing needs any more |
 | `list` | packages, versions, revisions, readiness |
 | `history <pkg>` | revisions of a package |
 | `rollback <pkg> [--to N]` | re-applies an earlier revision |
@@ -384,6 +385,6 @@ Building and publishing:
 | `push <dir> <oci-ref>` | publish a package tree as is |
 | `render <pkg>...` | write packages for Flux, Argo CD or helmfile, in kubepkg's order |
 
-Planned: `remove <pkg>` refusing while another package requires it, `init` and `validate` for recipe authors.
+Planned: `init` and `validate` for recipe authors.
 
 The CLI resolves with the operator's own view of the cluster and the same repository shadowing and policy, so a plan shows what the operator will do.
