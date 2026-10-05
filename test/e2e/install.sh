@@ -97,12 +97,15 @@ if ${K} get packages.kubepkg.dev virtualization >/dev/null 2>&1; then
   [[ "${out}" == *"kubevirt is required by virtualization"* ]] || fail "remove did not refuse a package another one requires: ${out}"
   ${K} get packages.kubepkg.dev kubevirt >/dev/null 2>&1 || fail "remove deleted kubevirt although virtualization requires it"
   "${KP[@]}" remove virtualization --autoremove --yes
-  for ((i = 0; i < 600; i += 5)); do
-    ${K} get packages.kubepkg.dev kubevirt cdi virtualization >/dev/null 2>&1 || break
-    sleep 5
+  # Each package goes once the operator has uninstalled its releases.
+  for p in virtualization kubevirt cdi; do
+    for ((i = 0; i < 600; i += 5)); do
+      ${K} get packages.kubepkg.dev "${p}" >/dev/null 2>&1 || break
+      sleep 5
+    done
+    ${K} get packages.kubepkg.dev "${p}" >/dev/null 2>&1 && fail "autoremove left ${p}"
   done
-  ${K} get packages.kubepkg.dev kubevirt >/dev/null 2>&1 && fail "autoremove left kubevirt"
-  ${K} get packages.kubepkg.dev cdi >/dev/null 2>&1 && fail "autoremove left cdi"
+  ${K} get packages.kubepkg.dev cert-manager >/dev/null 2>&1 || fail "autoremove took cert-manager, which was asked for"
   [[ -z "$(${K} -n kubevirt get deploy -o name 2>/dev/null)" ]] || fail "KubeVirt deployments left behind"
   echo "  virtualization, kubevirt and cdi removed; the rest stays"
   "${KP[@]}" list
