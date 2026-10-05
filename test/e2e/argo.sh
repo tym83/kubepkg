@@ -31,6 +31,12 @@ if [[ -z "${CHART_HOST:-}" ]]; then
 fi
 CHARTS="http://${CHART_HOST}:${WWW_PORT}"
 
+diagnose() {
+  ${K} -n argocd get applications.argoproj.io -o jsonpath='{range .items[*]}{.metadata.name}: sync={.status.sync.status} health={.status.health.status} op={.status.operationState.phase} {.status.operationState.message} {.status.conditions}{"\n"}{end}'
+  ${K} -n argocd logs deploy/argocd-repo-server --tail=20
+  echo "chart host: ${CHARTS}"
+}
+
 step "1. a Helm repository the cluster can reach"
 mkdir -p "${WORK}/www"
 helm package "${HERE}/recipes/hello/charts/hello" -d "${WORK}/www" >/dev/null
