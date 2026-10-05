@@ -92,7 +92,10 @@ fi
 
 if ${K} get packages.kubepkg.dev virtualization >/dev/null 2>&1; then
   step "3. remove"
-  "${KP[@]}" remove kubevirt --yes 2>&1 | grep -q "required by virtualization" || fail "remove took a package another one requires"
+  # remove must refuse; capture first, since its failure is the point.
+  out=$("${KP[@]}" remove kubevirt --yes 2>&1 || true)
+  [[ "${out}" == *"kubevirt is required by virtualization"* ]] || fail "remove did not refuse a package another one requires: ${out}"
+  ${K} get packages.kubepkg.dev kubevirt >/dev/null 2>&1 || fail "remove deleted kubevirt although virtualization requires it"
   "${KP[@]}" remove virtualization --autoremove --yes
   for ((i = 0; i < 600; i += 5)); do
     ${K} get packages.kubepkg.dev kubevirt cdi virtualization >/dev/null 2>&1 || break
