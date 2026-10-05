@@ -50,10 +50,11 @@ A package is a Helm chart, unchanged, and a `kubepkg.yaml` next to it (or in a s
 
 ## How it fits existing tools
 
-- With Argo CD and Flux, `Package` is an ordinary resource in Git. kubepkg reports readiness through standard conditions and ships an Argo CD health check.
-- kubepkg can apply through Flux (`HelmRelease`) or install charts itself. The backend is a deployment choice, not a fork of the format.
-- In CI, `kubepkg plan` shows what a change will do, and `kubepkg render` produces charts and values for any delivery tool, including werf.
-- A distribution is a channel: a repository with pinned versions and a default set of packages.
+- With Argo CD and Flux, `Package` is an ordinary resource in Git, and kubepkg reports readiness through standard conditions.
+- kubepkg can install charts itself or hand them to Flux (`HelmRelease`) or Argo CD (`Application`). The backend is a deployment choice, not a fork of the format.
+- Built packages are plain Helm charts in OCI registries: Helm, Flux, Argo CD and werf install them without kubepkg. `kubepkg render` writes a resolved, ordered set of packages for Flux, Argo CD or helmfile to apply from Git.
+- In CI, `kubepkg plan` shows what a change will do.
+- A distribution is a meta package in a repository: pinned member versions, installed and upgraded as one.
 
 ## Non-goals for now
 

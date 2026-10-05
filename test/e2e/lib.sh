@@ -6,7 +6,7 @@
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 WORK=$(mktemp -d)
 CLUSTER=${CLUSTER:-kubepkg-e2e}
-REG_NAME=kubepkg-e2e-registry
+REG_NAME=${REG_NAME:-kubepkg-e2e-registry}
 REG_PORT=${REG_PORT:-5001}
 REG=localhost:${REG_PORT}
 KCTX=kind-${CLUSTER}

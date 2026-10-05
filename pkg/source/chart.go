@@ -37,8 +37,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// ChartMediaType is the layer media type of a Helm chart in a registry.
-const ChartMediaType = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+// Media types of a Helm chart in a registry.
+const (
+	ChartMediaType       = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+	ChartConfigMediaType = "application/vnd.cncf.helm.config.v1+json"
+)
 
 // maxChartBytes bounds a downloaded chart archive, and maxIndexBytes a
 // repository index. Large public repositories have indexes of tens of

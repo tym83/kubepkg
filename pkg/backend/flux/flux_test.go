@@ -19,6 +19,7 @@ package flux
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ import (
 func component() backend.Component {
 	return backend.Component{
 		Package: "cert-manager", Name: "cert-manager", ReleaseName: "cert-manager", Namespace: "cert-manager",
-		ArtifactName: "cert-manager-default-cert-manager", ArtifactNamespace: "kubepkg-system",
+		Chart:             &backend.Chart{Repository: "oci://ghcr.io/example/packages/cert-manager", Name: "cert-manager", Version: "1.21.2-1"},
 		Values:            map[string]any{"replicas": 2},
 		ValuesFromSecrets: []string{"platform-values"},
 		DependsOn:         []string{"cilium/cilium"},
@@ -52,7 +53,7 @@ func TestRender(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := hr.Spec
-	if s.ChartRef.Kind != "ExternalArtifact" || s.ChartRef.Name != "cert-manager-default-cert-manager" || s.ChartRef.Namespace != "kubepkg-system" {
+	if s.ChartRef == nil || s.ChartRef.Kind != "OCIRepository" || s.ChartRef.Name != "cert-manager" || s.ChartRef.Namespace != "cert-manager" {
 		t.Errorf("chartRef = %+v", s.ChartRef)
 	}
 	if s.Install.Strategy.Name != string(helmv2.ActionStrategyRetryOnFailure) || s.Upgrade.Strategy.Name != string(helmv2.ActionStrategyRetryOnFailure) {
@@ -124,5 +125,38 @@ func TestStateOf(t *testing.T) {
 func TestRollbackUnsupported(t *testing.T) {
 	if _, err := (&Backend{}).Rollback(context.Background(), component(), 1); !errors.Is(err, ErrRollbackUnsupported) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRenderSource(t *testing.T) {
+	b := &Backend{Insecure: true}
+	src, err := b.RenderSource(component())
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := src.Object["spec"].(map[string]any)
+	if src.GetKind() != "OCIRepository" || spec["url"] != "oci://ghcr.io/example/packages/cert-manager/cert-manager" ||
+		spec["ref"].(map[string]any)["tag"] != "1.21.2-1" || spec["insecure"] != true {
+		t.Errorf("OCI source: %v %v", src.GetKind(), spec)
+	}
+	if sel := spec["layerSelector"].(map[string]any); sel["operation"] != "copy" || !strings.Contains(sel["mediaType"].(string), "helm.chart.content") {
+		t.Errorf("the chart layer must be selected as is for helm-controller: %v", sel)
+	}
+
+	c := component()
+	c.Chart = &backend.Chart{Repository: "https://charts.jetstack.io", Name: "cert-manager", Version: "v1.21.2"}
+	src, err = (&Backend{}).RenderSource(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.GetKind() != "HelmRepository" || src.Object["spec"].(map[string]any)["url"] != "https://charts.jetstack.io" {
+		t.Errorf("HTTP source: %v", src.Object)
+	}
+	hr, err := (&Backend{}).Render(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hr.Spec.ChartRef != nil || hr.Spec.Chart == nil || hr.Spec.Chart.Spec.Chart != "cert-manager" || hr.Spec.Chart.Spec.Version != "v1.21.2" || hr.Spec.Chart.Spec.SourceRef.Kind != "HelmRepository" {
+		t.Errorf("HelmRelease for an HTTP chart: %+v %+v", hr.Spec.ChartRef, hr.Spec.Chart)
 	}
 }

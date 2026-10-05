@@ -27,6 +27,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -41,6 +42,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/credentials"
 	"oras.land/oras-go/v2/registry/remote/retry"
+	"sigs.k8s.io/yaml"
 )
 
 // Media types of a Flux artifact, so Flux and kubepkg both read what
@@ -83,6 +85,9 @@ var (
 type PushResult struct {
 	// Digest is the manifest digest the tag points at.
 	Digest string
+	// LayerDigest is the digest of the single layer: for a chart, the
+	// digest of the chart archive.
+	LayerDigest string
 	// Reused is true when the tag already held the same content and
 	// nothing was pushed.
 	Reused bool
@@ -91,39 +96,61 @@ type PushResult struct {
 // Push packs dir into a reproducible gzipped tarball and pushes it as a
 // single-layer artifact to ref (oci://host/repo:tag).
 func Push(ctx context.Context, dir, ref string, opts PushOptions) (PushResult, error) {
-	target := strings.TrimPrefix(ref, "oci://")
-	if target == ref {
-		return PushResult{}, fmt.Errorf("target %q must be an oci:// reference", ref)
-	}
-	repo, err := remote.NewRepository(target)
+	layer, content, err := Pack(dir)
 	if err != nil {
 		return PushResult{}, err
 	}
-	repo.PlainHTTP = opts.PlainHTTP
+	return pushArtifact(ctx, ref, opts, artifact{
+		config: []byte("{}"), configType: FluxConfigMediaType,
+		layer: layer, layerType: FluxContentMediaType, content: content,
+	})
+}
+
+// artifact is one single-layer OCI artifact to push.
+type artifact struct {
+	config     []byte
+	configType string
+	layer      []byte
+	layerType  string
+	content    string
+}
+
+func (o PushOptions) repository(ref string) (*remote.Repository, error) {
+	target := strings.TrimPrefix(ref, "oci://")
+	if target == ref {
+		return nil, fmt.Errorf("target %q must be an oci:// reference", ref)
+	}
+	repo, err := remote.NewRepository(target)
+	if err != nil {
+		return nil, err
+	}
+	repo.PlainHTTP = o.PlainHTTP
 	client := &auth.Client{Client: retry.DefaultClient, Cache: auth.NewCache()}
-	if opts.CredentialsFile != "" {
-		store, err := credentials.NewStore(opts.CredentialsFile, credentials.StoreOptions{})
+	if o.CredentialsFile != "" {
+		store, err := credentials.NewStore(o.CredentialsFile, credentials.StoreOptions{})
 		if err != nil {
-			return PushResult{}, err
+			return nil, err
 		}
 		client.Credential = credentials.Credential(store)
 	} else if store, err := credentials.NewStoreFromDocker(credentials.StoreOptions{}); err == nil {
 		client.Credential = credentials.Credential(store)
 	}
 	repo.Client = client
+	return repo, nil
+}
 
-	layer, content, err := Pack(dir)
+func pushArtifact(ctx context.Context, ref string, opts PushOptions, a artifact) (PushResult, error) {
+	repo, err := opts.repository(ref)
 	if err != nil {
 		return PushResult{}, err
 	}
 	if opts.Immutable {
-		if res, done, err := published(ctx, repo, content); done {
+		if res, done, err := published(ctx, repo, a.content); done {
 			return res, err
 		}
 	}
-	config := []byte("{}")
-	configDesc := ocispec.Descriptor{MediaType: FluxConfigMediaType, Digest: digest.FromBytes(config), Size: int64(len(config))}
-	layerDesc := ocispec.Descriptor{MediaType: FluxContentMediaType, Digest: digest.FromBytes(layer), Size: int64(len(layer))}
+	configDesc := ocispec.Descriptor{MediaType: a.configType, Digest: digest.FromBytes(a.config), Size: int64(len(a.config))}
+	layerDesc := ocispec.Descriptor{MediaType: a.layerType, Digest: digest.FromBytes(a.layer), Size: int64(len(a.layer))}
 	created := time.Unix(0, 0).UTC().Format(time.RFC3339)
 	manifest := ocispec.Manifest{
 		Versioned: specs.Versioned{SchemaVersion: 2},
@@ -137,18 +164,17 @@ func Push(ctx context.Context, dir, ref string, opts PushOptions) (PushResult, e
 		},
 	}
 	if annotateContent {
-		manifest.Annotations[AnnotationContentDigest] = content
+		manifest.Annotations[AnnotationContentDigest] = a.content
 	}
 	mraw, err := json.Marshal(manifest)
 	if err != nil {
 		return PushResult{}, err
 	}
 	mdesc := ocispec.Descriptor{MediaType: ocispec.MediaTypeImageManifest, Digest: digest.FromBytes(mraw), Size: int64(len(mraw))}
-
 	for _, b := range []struct {
 		d ocispec.Descriptor
 		c []byte
-	}{{configDesc, config}, {layerDesc, layer}} {
+	}{{configDesc, a.config}, {layerDesc, a.layer}} {
 		if ok, err := repo.Exists(ctx, b.d); err == nil && ok {
 			continue
 		}
@@ -159,7 +185,7 @@ func Push(ctx context.Context, dir, ref string, opts PushOptions) (PushResult, e
 	if err := repo.PushReference(ctx, mdesc, bytes.NewReader(mraw), repo.Reference.Reference); err != nil {
 		return PushResult{}, fmt.Errorf("push manifest: %w", err)
 	}
-	return PushResult{Digest: mdesc.Digest.String()}, nil
+	return PushResult{Digest: mdesc.Digest.String(), LayerDigest: layerDesc.Digest.String()}, nil
 }
 
 // published checks an immutable tag before pushing. done is true when the
@@ -192,13 +218,17 @@ func published(ctx context.Context, repo *remote.Repository, content string) (re
 	if have != content {
 		return PushResult{}, true, fmt.Errorf("%s: %w", repo.Reference, ErrTagChanged)
 	}
-	return PushResult{Digest: desc.Digest.String(), Reused: true}, true, nil
+	res = PushResult{Digest: desc.Digest.String(), Reused: true}
+	if len(m.Layers) == 1 {
+		res.LayerDigest = m.Layers[0].Digest.String()
+	}
+	return res, true, nil
 }
 
 // layerContent is the digest of the uncompressed tree layer of m.
 func layerContent(ctx context.Context, repo *remote.Repository, m ocispec.Manifest) (string, error) {
 	for _, l := range m.Layers {
-		if !treeMediaTypes[l.MediaType] {
+		if !treeMediaTypes[l.MediaType] && l.MediaType != ChartMediaType {
 			continue
 		}
 		rc, err := repo.Fetch(ctx, l)
@@ -216,7 +246,7 @@ func layerContent(ctx context.Context, repo *remote.Repository, m ocispec.Manife
 		}
 		return d.Digest().String(), nil
 	}
-	return "", errors.New("no package tree layer")
+	return "", errors.New("no package tree or chart layer")
 }
 
 // Pack makes a gzipped tarball of dir with sorted entries, zero
@@ -225,6 +255,12 @@ func layerContent(ctx context.Context, repo *remote.Repository, m ocispec.Manife
 // everywhere; the compressed bytes are the same only with the same
 // compressor.
 func Pack(dir string) ([]byte, string, error) {
+	return pack(dir, "", nil)
+}
+
+// pack tars the files under dir below prefix; replace substitutes the
+// content of files by their path relative to dir.
+func pack(dir, prefix string, replace map[string][]byte) ([]byte, string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -249,21 +285,17 @@ func Pack(dir string) ([]byte, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
-		info, err := os.Stat(p)
-		if err != nil {
-			return nil, "", err
+		body, ok := replace[filepath.ToSlash(rel)]
+		if !ok {
+			if body, err = os.ReadFile(p); err != nil {
+				return nil, "", err
+			}
 		}
-		hdr := &tar.Header{Name: filepath.ToSlash(rel), Mode: 0o644, Size: info.Size(), Typeflag: tar.TypeReg, ModTime: time.Unix(0, 0), Format: tar.FormatPAX}
+		hdr := &tar.Header{Name: path.Join(prefix, filepath.ToSlash(rel)), Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg, ModTime: time.Unix(0, 0), Format: tar.FormatPAX}
 		if err := tw.WriteHeader(hdr); err != nil {
 			return nil, "", err
 		}
-		f, err := os.Open(p)
-		if err != nil {
-			return nil, "", err
-		}
-		_, err = io.Copy(tw, f)
-		f.Close()
-		if err != nil {
+		if _, err := tw.Write(body); err != nil {
 			return nil, "", err
 		}
 	}
@@ -280,4 +312,38 @@ func Pack(dir string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	return buf.Bytes(), digest.FromBytes(tarball.Bytes()).String(), nil
+}
+
+// PushChart publishes the chart in dir as a Helm chart in an OCI registry,
+// at <repository>/<name>:<version>, the way helm push does, with name and
+// version set in its Chart.yaml. Helm, Flux, Argo CD and werf all install
+// it as it is. LayerDigest of the result is the digest of the chart
+// archive.
+func PushChart(ctx context.Context, dir, repository, name, version string, opts PushOptions) (PushResult, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, "Chart.yaml"))
+	if err != nil {
+		return PushResult{}, err
+	}
+	meta := map[string]any{}
+	if err := yaml.Unmarshal(raw, &meta); err != nil {
+		return PushResult{}, fmt.Errorf("Chart.yaml: %w", err)
+	}
+	meta["name"], meta["version"] = name, version
+	chartYAML, err := yaml.Marshal(meta)
+	if err != nil {
+		return PushResult{}, err
+	}
+	config, err := json.Marshal(meta)
+	if err != nil {
+		return PushResult{}, err
+	}
+	layer, content, err := pack(dir, name, map[string][]byte{"Chart.yaml": chartYAML})
+	if err != nil {
+		return PushResult{}, err
+	}
+	ref := strings.TrimSuffix(repository, "/") + "/" + name + ":" + strings.ReplaceAll(version, "+", "_")
+	return pushArtifact(ctx, ref, opts, artifact{
+		config: config, configType: ChartConfigMediaType,
+		layer: layer, layerType: ChartMediaType, content: content,
+	})
 }

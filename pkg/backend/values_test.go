@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package helm
+package backend
 
 import (
 	"context"
@@ -24,8 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
-
-	"github.com/tym83/kubepkg/pkg/backend"
 )
 
 func secret(ns, name, values string) *corev1.Secret {
@@ -36,11 +34,11 @@ func secret(ns, name, values string) *corev1.Secret {
 }
 
 func TestValuesLayerSecretsUnderComponent(t *testing.T) {
-	b := &Backend{secrets: fake.NewClientset(
+	secrets := fake.NewClientset(
 		secret("kubepkg-system", "platform", "cluster:\n  domain: example.org\n  issuer: letsencrypt\nreplicas: 1\n"),
 		secret("app", "local", "cluster:\n  issuer: internal\n"),
-	)}
-	got, err := b.values(context.Background(), backend.Component{
+	)
+	got, err := ResolveValues(context.Background(), secrets, Component{
 		Namespace:         "app",
 		ValuesFromSecrets: []string{"kubepkg-system/platform", "local"},
 		Values:            map[string]any{"replicas": 3},
@@ -58,8 +56,8 @@ func TestValuesLayerSecretsUnderComponent(t *testing.T) {
 }
 
 func TestValuesMissingSecretFails(t *testing.T) {
-	b := &Backend{secrets: fake.NewClientset()}
-	_, err := b.values(context.Background(), backend.Component{Namespace: "app", ValuesFromSecrets: []string{"kubepkg-system/platform"}})
+	secrets := fake.NewClientset()
+	_, err := ResolveValues(context.Background(), secrets, Component{Namespace: "app", ValuesFromSecrets: []string{"kubepkg-system/platform"}})
 	if err == nil {
 		t.Fatal("a missing values secret must fail the release, not install it unconfigured")
 	}

@@ -6,7 +6,7 @@
 # it as a package with emulation (kind has no /dev/kvm), waits until
 # KubeVirt reports Available, then removes it.
 #
-# Needs docker, kind, kubectl and go, and network access to GitHub and the
+# Needs docker, kind, kubectl, helm and go, and network access to GitHub and the
 # KubeVirt image registry. Leaves nothing behind unless KEEP=1.
 set -euo pipefail
 
@@ -23,7 +23,8 @@ step "1. build kubevirt from upstream and publish it"
 "${ROOT}/bin/kubepkg" build "${HERE}/recipes/kubevirt" --registry "oci://${REG}/packages" --plain-http \
   -o "${WORK}/dist" --cache-dir "${WORK}/build-cache"
 "${ROOT}/bin/kubepkg" repo index "${WORK}/dist" -o "${WORK}/index.yaml"
-grep -q "oci://${REG}/packages/kubevirt@sha256:" "${WORK}/index.yaml" || fail "index does not point at the published package"
+grep -q "repository: oci://${REG}/packages/kubevirt$" "${WORK}/index.yaml" || fail "index does not point at the published charts"
+helm show chart "oci://${REG}/packages/kubevirt/kubevirt-operator" --version 1.9.0-1 --plain-http >/dev/null 2>&1 || fail "the published chart is not a Helm chart"
 
 step "2. install it"
 ${K} apply -f "${WORK}/dist/kubevirt-1.9.0-1.yaml" >/dev/null

@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
+	"github.com/tym83/kubepkg/api/v1alpha1"
 	"github.com/tym83/kubepkg/pkg/build"
 	"github.com/tym83/kubepkg/pkg/source"
 )
@@ -92,7 +93,13 @@ under the same version and build is an error.`,
 			if reused {
 				verb = "already published"
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "%s %s, wrote %s\n", verb, src.Spec.SourceRef.URL, file)
+			where := "a meta package, nothing to push"
+			if repo := publishedRepository(src); repo != "" {
+				where = repo
+			} else {
+				verb = "built"
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s %s, wrote %s\n", verb, where, file)
 			return nil
 		},
 	}
@@ -103,4 +110,16 @@ under the same version and build is an error.`,
 	cmd.Flags().BoolVar(&push.PlainHTTP, "plain-http", false, "talk to registries without TLS (local registries only)")
 	cmd.Flags().StringVar(&push.CredentialsFile, "registry-config", "", "Docker config file with registry credentials")
 	return cmd
+}
+
+// publishedRepository names where a published package's charts are.
+func publishedRepository(src *v1alpha1.PackageSource) string {
+	for _, v := range src.Spec.Variants {
+		for _, c := range v.Components {
+			if c.Chart != nil {
+				return c.Chart.Repository
+			}
+		}
+	}
+	return ""
 }

@@ -4,7 +4,7 @@ This document specifies the v0.1 API and the behaviour of the operator and the C
 
 ## Scope of v0.1
 
-In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, a plan before changes, two backends (Helm and Flux), and settings that let a platform embed kubepkg without changing its code.
+In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, a plan before changes, three backends (Helm, Flux and Argo CD), and settings that let a platform embed kubepkg without changing its code.
 
 Out of scope for v0.1, on the roadmap: signature verification, TUF repository metadata, pre-upgrade hooks, an in-cluster repository resource with automatic version selection, multi-cluster targeting.
 
@@ -182,8 +182,11 @@ type Backend interface {
 }
 ```
 
+Every backend gets a package's components one at a time in dependency order: the operator applies the next one only once the one before it is ready, so ordering never depends on the delivery tool supporting it. Synchronous backends report readiness from `Apply`; asynchronous ones are re-checked until they settle.
+
 - **helm** installs charts with the Helm SDK inside the operator. Sources: published charts (HTTP repositories and OCI registries) and `OCIArtifact` package trees. Rollback uses Helm release history. No other controllers are needed.
-- **flux** renders each component into a Flux `HelmRelease`. Sources: `GitRepository`, `OCIRepository`, through Flux `ExternalArtifact`; something in the cluster has to publish each component's chart as that artifact, and kubepkg does not ship such a controller yet. Flux keeps no earlier chart artifacts, so this backend cannot roll back: packages applied through it are always recovered by a forward fix, and `UpgradeFailed` is reported instead of `UpgradeRolledBack`.
+- **flux** hands each component to Flux: it writes the chart's source, an `OCIRepository` selecting the Helm chart layer for charts in a registry or a `HelmRepository` otherwise, and a `HelmRelease`, and deletes both on uninstall. It needs only Flux's source and helm controllers. Sources: published charts; package trees cannot be handed to Flux. Flux keeps no earlier chart artifacts, so this backend cannot roll back: packages applied through it are recovered by a forward fix, and `UpgradeFailed` is reported instead of `UpgradeRolledBack`. Flux reads the platform values Secret only from the release namespace.
+- **argo** hands each component to Argo CD as an automatically synced `Application` in `--argo-namespace` (default `argocd`) and `--argo-project`. Argo CD cannot read values from Secrets, so the operator passes platform and package values inline. A component is ready when the wanted chart version is synced and healthy; deleting it lets Argo CD remove what it deployed. It cannot roll back, like flux.
 
 The backend is chosen per operator installation (`--backend`).
 
@@ -227,15 +230,38 @@ spec:
 
 Sources are a file or `.tar.gz` archive by URL with its sha256 (`path` picks a file or directory inside an archive), a published chart with its digest, or a directory next to the recipe. A chart is made from one chart source, or from manifests, which are wrapped into a chart that applies them verbatim: their content never passes through the template engine. On top of that, `values` sets the package's defaults, `overlay` adds or replaces files, and `exclude` drops objects from wrapped manifests.
 
-`kubepkg build <recipe> --registry oci://...` fetches and checks the sources, writes the package tree, pushes it as `<name>:<version>-<build>` and writes the PackageSource pinned to the pushed digest; `kubepkg repo index` over those files makes the index. The same recipe always builds the same content. A package's identity is that content, the digest of its uncompressed tree, recorded on the artifact: compressed bytes differ between compressors, and so between Go releases. Tags are immutable: when the tag already holds the same content, the published artifact is reused, so rebuilding an unchanged recipe on another toolchain publishes nothing new; different content under the same version and build is refused.
+`kubepkg build <recipe> --registry oci://...` fetches and checks the sources, builds the charts, and publishes each one as an ordinary Helm chart in the registry, `oci://.../<package>/<chart>` at version `<version>-<build>`; the PackageSource it writes refers to them by archive digest, and `kubepkg repo index` over those files makes the index. Because built packages are plain Helm OCI charts, Helm, Flux, Argo CD and werf can install them without kubepkg. The same recipe always builds the same content. A package's identity is that content, the digest of its uncompressed tree, recorded on the artifact: compressed bytes differ between compressors, and so between Go releases. Tags are immutable: when the tag already holds the same content, the published artifact is reused, so rebuilding an unchanged recipe on another toolchain publishes nothing new; different content under the same version and build is refused.
 
 A distribution extends builds with plugins. A source `{plugin: git, with: {...}}` is fetched by a source plugin, and a chart's `steps: [{plugin: relocate-images, with: {...}}]` run step plugins on the finished chart, in order. A plugin is either Go code registered in `build.Options.Plugins`, or an executable on `PATH` named `kubepkg-source-<name>` or `kubepkg-step-<name>`, in any language: it reads `with` as JSON on stdin, finds its directories in `KUBEPKG_OUT` (a source fills it) or `KUBEPKG_CHART` (a step changes it), the package in `KUBEPKG_PACKAGE` and `KUBEPKG_VERSION`, runs in the recipe directory, and fails the build with a non-zero exit. Plugins must be deterministic, or builds stop being reproducible.
 
 `spec.version` is the upstream version and `spec.build` numbers our packagings of it. Constraints match the version; of two builds of one version the higher is newer.
 
+### Meta packages: a distribution as a package
+
+A recipe with no charts builds a meta package: only requirements. A distribution is one such package listing its members and their versions:
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: mydistro
+spec:
+  version: 2.0.0
+  package:
+    variants:
+      - name: default
+        requires:
+          - {package: cilium, version: "~1.18"}
+          - {package: cert-manager, version: "~1.21"}
+          - {package: kubevirt, version: "~1.10"}
+          - {package: cdi}
+```
+
+`kubepkg install mydistro` installs every member and the meta package itself. Each member's `Package` gets the constraints the packages requiring it set (all of them must hold), or follows patch releases when none is set, so installing `mydistro@2.0.0` over 1.0.0 moves the members to the versions 2.0.0 asks for. The operator reports the meta package Ready once every member is; it installs nothing of its own. Platform-wide settings reach the members through the platform values Secret.
+
 ## Package repositories
 
-A repository is one index file that lists every version of every package it offers, the way a Helm repository index lists charts. Charts are not copied into it: each version points at the upstream chart by repository, version and digest.
+A repository is one index file that lists every version of every package it offers, the way a Helm repository index lists charts. Charts are not copied into it: each version points at its charts by repository, version and digest.
 
 Authors keep one PackageSource per package version in a directory, in any layout:
 
@@ -299,6 +325,16 @@ The operator keeps every index loaded. A `Package` with no hand-written `Package
 
 A distribution adds index transports by URL scheme (`http` and `https` are built in) and a policy that admits indexes and versions — signature checks, allowed registries — through `operator.Options`.
 
+## Other delivery tools without the operator
+
+Built packages are ordinary Helm charts in OCI registries, so any tool that installs Helm charts installs them. `kubepkg render <package>...` does the part those tools lack: it resolves the packages and their requirements, as `install` would for an empty cluster, and writes them in kubepkg's order for the tool to apply from Git.
+
+- `--format flux`: chart sources and `HelmRelease`s with `dependsOn` across components and packages.
+- `--format argo`: `Application`s with sync waves, for an app of apps.
+- `--format helmfile`: releases with `needs`.
+
+Packages come from `--repo` indexes or the cluster's repositories; package defaults apply, and values are set in the output. What the operator adds on top — revisions, whole-package rollback, CRD ownership, requirement checks at runtime — is not part of the rendered output.
+
 ## Embedding in a platform
 
 kubepkg is a mechanism first and a set of binaries second. It runs in any conformant cluster with nothing but its CRDs and the operator, and a distribution adapts it at three levels, from no code to its own binaries.
@@ -310,7 +346,7 @@ Configuration — operator flags, all off by default:
 | `--api-group` | serves the types under the platform's own group; `make crds-for-group GROUP=... OUT=...` writes matching CRDs. The CLI takes the same flag |
 | `--values-secret namespace/name` | layers the Secret's `values.yaml` under every component's values, for cluster-wide settings such as a domain or an issuer; a PackageSource opts out with the `kubepkg.dev/skip-platform-values` annotation. A missing Secret fails the release instead of installing it unconfigured |
 | `--namespace-label key=value` | labels every namespace the packages create (repeatable) |
-| `--artifact-namespace` | where Flux chart artifacts live (flux backend) |
+| `--backend helm\|flux\|argo` | how components are installed; `--argo-namespace` and `--argo-project` place Argo CD Applications |
 
 Releases are labelled `kubepkg.dev/package`; privileged components get `<group>/privileged`.
 
@@ -346,7 +382,8 @@ Building and publishing:
 | `build <recipe>` | build a package from upstream sources and publish it |
 | `repo index <dir>` | build a repository index from the PackageSources under a directory |
 | `push <dir> <oci-ref>` | publish a package tree as is |
+| `render <pkg>...` | write packages for Flux, Argo CD or helmfile, in kubepkg's order |
 
-Planned: `remove <pkg>` refusing while another package requires it, `render` for other delivery tools, `init` and `validate` for recipe authors.
+Planned: `remove <pkg>` refusing while another package requires it, `init` and `validate` for recipe authors.
 
 The CLI resolves with the operator's own view of the cluster and the same repository shadowing and policy, so a plan shows what the operator will do.

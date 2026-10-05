@@ -272,3 +272,31 @@ spec:
 		t.Fatalf("valid recipe rejected: %v", err)
 	}
 }
+
+func TestMetaRecipeHasNothingToPush(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, RecipeFile), `apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata: {name: virtualization}
+spec:
+  version: 1.0.0
+  package:
+    variants:
+      - name: default
+        requires:
+          - {package: kubevirt, version: "~1.9"}
+          - {package: cdi, version: "~1.66"}
+`)
+	res, err := Build(context.Background(), dir, Options{Fetcher: &source.Fetcher{CacheDir: t.TempDir()}, WorkDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An unreachable registry: a meta package must not need it.
+	src, reused, err := Publish(context.Background(), res, "oci://127.0.0.1:1/nowhere", source.PushOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reused || src.Spec.SourceRef != nil || src.Spec.Version != "1.0.0" || len(src.Spec.Variants[0].Requires) != 2 {
+		t.Fatalf("meta package source: %+v", src.Spec)
+	}
+}

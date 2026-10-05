@@ -111,7 +111,7 @@ func TestInstallWithRequirements(t *testing.T) {
 	if p := get("kubevirt"); p.Spec.Version != "~1.9" || p.Annotations[AnnotationDependency] != "" {
 		t.Errorf("kubevirt: %+v %v", p.Spec, p.Annotations)
 	}
-	if p := get("cdi"); p.Spec.Version != "~1.61" || p.Annotations[AnnotationDependency] == "" {
+	if p := get("cdi"); p.Spec.Version != ">=1.60" || p.Annotations[AnnotationDependency] == "" {
 		t.Errorf("cdi: %+v %v", p.Spec, p.Annotations)
 	}
 }
@@ -159,5 +159,63 @@ func TestPlanFailsOnUnsatisfiable(t *testing.T) {
 	s := store(t, map[string][]v1alpha1.PackageSourceSpec{"kubevirt": {spec("1.9.0", v1alpha1.Requirement{Package: "cdi", Version: ">=2"})}, "cdi": {spec("1.60.0")}})
 	if _, err := Plan(context.Background(), fakeClient(t), s, repo.AllowAll{}, servedAPIs{}, "", parseRequests([]string{"kubevirt"})); err == nil || !strings.Contains(err.Error(), "cdi") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestMetaPackageMovesItsMembers(t *testing.T) {
+	meta := func(version, kubevirt string) v1alpha1.PackageSourceSpec {
+		return v1alpha1.PackageSourceSpec{Version: version, Variants: []v1alpha1.Variant{{Name: "default", Requires: []v1alpha1.Requirement{{Package: "kubevirt", Version: kubevirt}, {Package: "cdi"}}}}}
+	}
+	s := store(t, map[string][]v1alpha1.PackageSourceSpec{
+		"distro":   {meta("1.0.0", "~1.9"), meta("2.0.0", "~1.10")},
+		"kubevirt": {spec("1.9.0"), spec("1.9.3"), spec("1.10.1")},
+		"cdi":      {spec("1.60.0")},
+	})
+	c := fakeClient(t)
+	ctx := context.Background()
+	install := func(req string) {
+		t.Helper()
+		steps, err := Plan(ctx, c, s, repo.AllowAll{}, servedAPIs{}, "", parseRequests([]string{req}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := Apply(ctx, c, steps); err != nil {
+			t.Fatal(err)
+		}
+	}
+	version := func(name string) string {
+		t.Helper()
+		p := &v1alpha1.Package{}
+		if err := c.Get(ctx, types.NamespacedName{Name: name}, p); err != nil {
+			t.Fatal(err)
+		}
+		return p.Spec.Version
+	}
+	settle := func(name, applied string) {
+		t.Helper()
+		p := &v1alpha1.Package{}
+		if err := c.Get(ctx, types.NamespacedName{Name: name}, p); err != nil {
+			t.Fatal(err)
+		}
+		p.Status.Version = applied
+		if err := c.Status().Update(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	install("distro@~1.0")
+	if v := version("kubevirt"); v != "~1.9" {
+		t.Fatalf("member constraint after installing the distro: %q", v)
+	}
+	if v := version("cdi"); v != "~1.60" {
+		t.Fatalf("a member without a constraint follows patch releases: %q", v)
+	}
+	settle("distro", "1.0.0")
+	settle("kubevirt", "1.9.3")
+	settle("cdi", "1.60.0")
+
+	install("distro@~2.0")
+	if v := version("kubevirt"); v != "~1.10" {
+		t.Fatalf("the new distro version did not move kubevirt: %q", v)
 	}
 }
