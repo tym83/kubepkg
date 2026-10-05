@@ -91,6 +91,6 @@ func NewRootCommand(o Options) *cobra.Command {
 	cl := &cluster{fetchers: o.IndexFetchers, policy: o.Policy}
 	root.PersistentFlags().StringVar(&cl.kubeContext, "context", "", "kubeconfig context (default: the current one)")
 	root.PersistentFlags().StringVar(&cl.apiGroup, "api-group", o.APIGroup, "API group the kubepkg types are served under")
-	root.AddCommand(buildCmd(), pushCmd(), repoCmd(cl), searchCmd(cl), installCmd(cl), planCmd(cl), renderCmd(cl), removeCmd(cl), listCmd(cl), historyCmd(cl), rollbackCmd(cl))
+	root.AddCommand(initCmd(), validateCmd(), buildCmd(), pushCmd(), repoCmd(cl), searchCmd(cl), installCmd(cl), planCmd(cl), renderCmd(cl), removeCmd(cl), listCmd(cl), historyCmd(cl), rollbackCmd(cl))
 	return root
 }

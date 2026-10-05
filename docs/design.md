@@ -380,11 +380,12 @@ Building and publishing:
 
 | Command | Does |
 |---|---|
+| `init <dir> --chart <repo>/<name>@<version>` or `--manifest <url>...` | start a recipe with every source pinned, the description taken from the chart, Namespaces dropped from manifests and the shipped CRDs listed |
+| `validate <recipe-dir>...` | build without publishing, render the charts with their defaults and check the package against them; an undeclared CRD is an error |
 | `build <recipe>` | build a package from upstream sources and publish it |
 | `repo index <dir>` | build a repository index from the PackageSources under a directory |
 | `push <dir> <oci-ref>` | publish a package tree as is |
 | `render <pkg>...` | write packages for Flux, Argo CD or helmfile, in kubepkg's order |
 
-Planned: `init` and `validate` for recipe authors.
 
 The CLI resolves with the operator's own view of the cluster and the same repository shadowing and policy, so a plan shows what the operator will do.
