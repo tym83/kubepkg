@@ -38,8 +38,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/yaml"
 
@@ -58,9 +60,13 @@ const (
 
 // Index is a repository index.
 type Index struct {
-	APIVersion string             `json:"apiVersion"`
-	Kind       string             `json:"kind"`
-	Packages   map[string]Package `json:"packages"`
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	// Generated is when the index was built. Clusters refuse an index
+	// older than one they accepted, so an old signed index cannot be
+	// replayed to roll them back to versions since withdrawn.
+	Generated *metav1.Time       `json:"generated,omitempty"`
+	Packages  map[string]Package `json:"packages"`
 }
 
 // Package is every published version of one package.
@@ -108,7 +114,8 @@ func Build(ctx context.Context, dir string, charts ChartFetcher, opts BuildOptio
 	if err != nil {
 		return nil, err
 	}
-	idx := &Index{APIVersion: v1alpha1.GroupVersion.String(), Kind: IndexKind, Packages: map[string]Package{}}
+	now := metav1.NewTime(time.Now().UTC().Truncate(time.Second))
+	idx := &Index{APIVersion: v1alpha1.GroupVersion.String(), Kind: IndexKind, Generated: &now, Packages: map[string]Package{}}
 	published := map[string]string{}
 	if opts.Base != nil {
 		for name, p := range opts.Base.Packages {
@@ -324,3 +331,37 @@ func Parse(raw []byte) (*Index, error) {
 }
 
 func bufioReader(b []byte) *bufio.Reader { return bufio.NewReader(bytes.NewReader(b)) }
+
+// LoadIndex fetches the index at url, checks its signature when public
+// keys are given, and parses it. Errors are ErrFetchFailed,
+// ErrBadSignature or ErrInvalidIndex.
+func LoadIndex(ctx context.Context, fetchers Fetchers, url string, publicKeys []string) (*Index, []byte, error) {
+	raw, err := fetchers.Fetch(ctx, url)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)
+	}
+	if len(publicKeys) > 0 {
+		keys, err := ParsePublicKeys(publicKeys)
+		if err != nil {
+			return nil, nil, err
+		}
+		sig, err := fetchers.Fetch(ctx, url+SignatureSuffix)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%w: no signature at %s%s: %v", ErrBadSignature, url, SignatureSuffix, err)
+		}
+		if err := Verify(raw, sig, keys); err != nil {
+			return nil, nil, err
+		}
+	}
+	idx, err := Parse(raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidIndex, err)
+	}
+	return idx, raw, nil
+}
+
+// Errors of LoadIndex besides ErrBadSignature.
+var (
+	ErrFetchFailed  = errors.New("index cannot be fetched")
+	ErrInvalidIndex = errors.New("index is not valid")
+)

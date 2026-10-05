@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -355,8 +356,9 @@ func cleanYAML(v any) ([]byte, error) {
 
 func renderCmd(cl *cluster) *cobra.Command {
 	var (
-		o     RenderOptions
-		repos []string
+		o        RenderOptions
+		repos    []string
+		keyFiles []string
 	)
 	cmd := &cobra.Command{
 		Use:   "render <package>[@constraint]...",
@@ -372,13 +374,17 @@ repositories. Package defaults apply; set values in the output.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var store *repo.Store
 			if len(repos) > 0 {
-				store = repo.NewStore()
-				for i, u := range repos {
-					raw, err := cl.fetchers.Fetch(cmd.Context(), u)
+				var keys []string
+				for _, f := range keyFiles {
+					raw, err := os.ReadFile(f)
 					if err != nil {
 						return err
 					}
-					idx, err := repo.Parse(raw)
+					keys = append(keys, string(raw))
+				}
+				store = repo.NewStore()
+				for i, u := range repos {
+					idx, _, err := repo.LoadIndex(cmd.Context(), cl.fetchers, u, keys)
 					if err != nil {
 						return fmt.Errorf("%s: %w", u, err)
 					}
@@ -407,5 +413,6 @@ repositories. Package defaults apply; set values in the output.`,
 	cmd.Flags().StringVar(&o.ArgoNamespace, "argo-namespace", "", "namespace of the Applications (argo; default argocd)")
 	cmd.Flags().StringVar(&o.ArgoProject, "argo-project", "", "Argo CD project (argo; default default)")
 	cmd.Flags().BoolVar(&o.Insecure, "insecure", false, "let Flux pull from registries over plain HTTP (flux)")
+	cmd.Flags().StringArrayVar(&keyFiles, "public-key", nil, "with --repo: trust only indexes signed with this ed25519 public key file (repeatable)")
 	return cmd
 }

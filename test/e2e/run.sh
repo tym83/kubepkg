@@ -211,7 +211,7 @@ EOF
 )
 [[ "${bad}" == *"exactly one of path and chart"* ]] || fail "a component with both path and chart was accepted: ${bad}"
 
-step "9. install from a repository with the CLI, requirements included, then upgrade"
+step "9. install from a signed repository with the CLI, requirements included, then upgrade"
 sed -i.bak 's/^version: .*/version: 0.2.0/' "${WORK}/hello/Chart.yaml"
 printf 'image: registry.k8s.io/pause:3.9\n' > "${WORK}/hello/values.yaml"
 helm package "${WORK}/hello" -d "${WORK}" >/dev/null
@@ -249,13 +249,14 @@ spec:
           install: {namespace: e2e-salute}
 EOF
 mkdir -p "${WORK}/www"
-"${ROOT}/bin/kubepkg" repo index "${WORK}/recipes" --plain-http -o "${WORK}/www/index.yaml" 2>/dev/null
+"${ROOT}/bin/kubepkg" repo keygen "${WORK}/signing" >/dev/null
+"${ROOT}/bin/kubepkg" repo index "${WORK}/recipes" --plain-http -o "${WORK}/www/index.yaml" --sign-key "${WORK}/signing.key" 2>/dev/null
 WWW_PORT=${WWW_PORT:-5002}
 python3 -m http.server "${WWW_PORT}" --bind 127.0.0.1 --directory "${WORK}/www" >/dev/null 2>&1 &
 WWW_PID=$!
 KP=("${ROOT}/bin/kubepkg" --context "${KCTX}")
 for ((i = 0; i < 20; i++)); do curl -sf "http://127.0.0.1:${WWW_PORT}/index.yaml" >/dev/null && break; sleep 0.5; done
-"${KP[@]}" repo add e2e "http://127.0.0.1:${WWW_PORT}/index.yaml" --interval 30s >/dev/null
+"${KP[@]}" repo add e2e "http://127.0.0.1:${WWW_PORT}/index.yaml" --interval 30s --public-key "${WORK}/signing.pub" >/dev/null
 "${KP[@]}" search hello | grep -Eq '^greeter +0\.2\.0 +e2e +Says hello' || fail "search does not find greeter"
 plan=$("${KP[@]}" plan greeter@~0.1)
 [[ "${plan}" == *"install  salute"*"required by greeter 0.1.0"* && "${plan}" == *"install  greeter"*"requested"* ]] || fail "unexpected plan: ${plan}"
@@ -273,6 +274,18 @@ done
 [[ "$(image_of e2e-greeter hello)" == registry.k8s.io/pause:3.9 ]] || fail "greeter did not move to 0.2.0"
 wait_reason greeter ReconciliationSucceeded
 echo "  greeter: $(${K} get packages.kubepkg.dev greeter -o jsonpath='{.status.version}')"
+
+# An index changed after signing is refused, and the cluster keeps the one
+# it accepted.
+printf '# tampered\n' >> "${WORK}/www/index.yaml"
+for ((i = 0; i < 90; i += 3)); do
+  [[ "$(${K} get repositories.kubepkg.dev e2e -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}')" == IndexRefused ]] && break
+  sleep 3
+done
+[[ "$(${K} get repositories.kubepkg.dev e2e -o jsonpath='{.status.conditions[?(@.type=="Ready")].reason}')" == IndexRefused ]] || fail "a tampered index was not refused"
+"${KP[@]}" search greeter 2>&1 | grep -q "left out" || fail "the CLI used a tampered index"
+wait_reason greeter ReconciliationSucceeded
+echo "  tampered index refused"
 kill "${WWW_PID}" 2>/dev/null || true
 
 step "10. delete"

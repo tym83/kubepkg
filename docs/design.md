@@ -6,7 +6,7 @@ This document specifies the v0.1 API and the behaviour of the operator and the C
 
 In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, a plan before changes, three backends (Helm, Flux and Argo CD), and settings that let a platform embed kubepkg without changing its code.
 
-Out of scope for v0.1, on the roadmap: signature verification, TUF repository metadata, pre-upgrade hooks, an in-cluster repository resource with automatic version selection, multi-cluster targeting.
+Out of scope for v0.1, on the roadmap: TUF repository metadata (role delegation, threshold signatures), pre-upgrade hooks, multi-cluster targeting.
 
 ## Resources
 
@@ -294,7 +294,23 @@ Building the index enforces what makes a repository trustworthy:
 - a version built from a package tree must pin the tree by digest (`oci://...@sha256:...`).
 - with `--merge <published index>`, versions published before are kept even when their recipes are gone, and a version rebuilt under the same version and build must come out identical: published versions never change, a changed recipe needs a new build number.
 
-Because every chart is pinned, the spec digest identifies exactly what a version installs; it is what signatures will cover once they are added. The index is published as a static `index.yaml` over HTTP.
+Because every chart is pinned, the spec digest identifies exactly what a version installs. The index is published as a static `index.yaml` over HTTP, signed as described below.
+
+### Signing and trust
+
+A repository signs its index, and clusters trust repositories by key:
+
+```bash
+kubepkg repo keygen release                        # release.key (private), release.pub
+kubepkg repo index dist --sign-key release.key     # index.yaml and index.yaml.sig
+kubepkg repo add main https://packages.example.org/index.yaml --public-key release.pub
+```
+
+The signature is ed25519 over the index exactly as published, served next to it with `.sig`. The index pins every chart by digest, and every chart is verified against its digest when fetched, so one signature covers everything the repository installs. A `Repository` with `publicKeys` accepts an index only when one of the keys signed it; several keys let a repository rotate: trust the new key, then sign with it. CI signs with `--sign-key-env`, reading the key from a secret.
+
+Every index carries the time it was generated, and a cluster refuses an index older than one it already accepted, so an old index that is validly signed cannot be replayed to bring back versions since withdrawn. A refused index leaves the one accepted before in use. The CLI applies the same checks to the cluster's repositories.
+
+A distribution adds checks of its own, such as signatures from its own key infrastructure or allowed registries, through the admission policy.
 
 ### Installing from repositories
 
@@ -367,7 +383,7 @@ Installing and running:
 
 | Command | Does |
 |---|---|
-| `repo add <name> <url>`, `repo list`, `repo remove <name>` | subscribe the cluster to repositories |
+| `repo add <name> <url> [--public-key <file>]`, `repo list`, `repo remove <name>` | subscribe the cluster to repositories, trusting only indexes signed by the given keys |
 | `search [term]` | what the repositories offer, from the repository each package is taken from |
 | `install <pkg>[@constraint]...` | resolves the packages and their requirements against the cluster's repositories, shows the plan, and writes one Package per package; requirements already installed are kept, packages pulled in as requirements are marked `kubepkg.dev/dependency`, and without a constraint a package follows patch releases (`~X.Y`) |
 | `plan <pkg>[@constraint]...` | the same plan without changing anything: installs, upgrades, downgrades, CRDs, permissions, rollback safety |
@@ -383,7 +399,8 @@ Building and publishing:
 | `init <dir> --chart <repo>/<name>@<version>` or `--manifest <url>...` | start a recipe with every source pinned, the description taken from the chart, Namespaces dropped from manifests and the shipped CRDs listed |
 | `validate <recipe-dir>...` | build without publishing, render the charts with their defaults and check the package against them; an undeclared CRD is an error |
 | `build <recipe>` | build a package from upstream sources and publish it |
-| `repo index <dir>` | build a repository index from the PackageSources under a directory |
+| `repo index <dir> [--sign-key <file>]` | build a repository index from the PackageSources under a directory, signed |
+| `repo keygen <prefix>` | make an ed25519 key pair for signing |
 | `push <dir> <oci-ref>` | publish a package tree as is |
 | `render <pkg>...` | write packages for Flux, Argo CD or helmfile, in kubepkg's order |
 
