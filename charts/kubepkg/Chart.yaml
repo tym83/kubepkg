@@ -1,0 +1,8 @@
+apiVersion: v2
+name: kubepkg
+description: The kubepkg operator and its CRDs
+type: application
+home: https://github.com/tym83/kubepkg
+# Set from the release tag when the chart is published.
+version: 0.0.0-dev
+appVersion: dev

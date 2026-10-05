@@ -1,10 +1,11 @@
 CONTROLLER_GEN ?= $(shell go env GOPATH)/bin/controller-gen
 
-.PHONY: generate test build crds-for-group
+.PHONY: generate test build crds-for-group chart-crds
 
 generate:
 	$(CONTROLLER_GEN) object paths=./api/...
 	$(CONTROLLER_GEN) crd paths=./api/... output:crd:artifacts:config=config/crd
+	$(MAKE) chart-crds
 
 test:
 	go test ./...
@@ -17,3 +18,8 @@ build:
 crds-for-group:
 	@test -n "$(GROUP)" -a -n "$(OUT)" || { echo "set GROUP and OUT"; exit 1; }
 	python3 hack/crds_for_group.py config/crd $(OUT) $(GROUP)
+
+# The chart ships the CRDs; keep its copy in step with config/crd.
+chart-crds:
+	rm -f charts/kubepkg/files/crds/*.yaml
+	cp config/crd/*.yaml charts/kubepkg/files/crds/

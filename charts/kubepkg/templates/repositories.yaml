@@ -1,0 +1,19 @@
+{{- range .Values.repositories }}
+---
+apiVersion: {{ $.Values.apiGroup }}/v1alpha1
+kind: Repository
+metadata:
+  name: {{ .name }}
+  labels: {{- include "kubepkg.labels" $ | nindent 4 }}
+spec:
+  url: {{ .url }}
+  {{- with .priority }}
+  priority: {{ . }}
+  {{- end }}
+  {{- with .interval }}
+  interval: {{ . }}
+  {{- end }}
+  {{- with .publicKeys }}
+  publicKeys: {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
