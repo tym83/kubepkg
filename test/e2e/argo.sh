@@ -16,6 +16,10 @@ WWW_PORT=${WWW_PORT:-5007}
 source "$(dirname "$0")/lib.sh"
 HERE=${ROOT}/test/e2e
 
+
+build_binaries
+start_cluster
+
 # CHART_HOST is how the cluster reaches this machine: the lima host under
 # colima, the kind network gateway elsewhere.
 if [[ -z "${CHART_HOST:-}" ]]; then
@@ -26,9 +30,6 @@ if [[ -z "${CHART_HOST:-}" ]]; then
   fi
 fi
 CHARTS="http://${CHART_HOST}:${WWW_PORT}"
-
-build_binaries
-start_cluster
 
 step "1. a Helm repository the cluster can reach"
 mkdir -p "${WORK}/www"
