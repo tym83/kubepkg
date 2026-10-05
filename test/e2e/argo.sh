@@ -21,13 +21,13 @@ build_binaries
 start_cluster
 
 # CHART_HOST is how the cluster reaches this machine: the lima host under
-# colima, the kind network gateway elsewhere.
+# colima, the kind node's default gateway elsewhere.
 if [[ -z "${CHART_HOST:-}" ]]; then
   if command -v colima >/dev/null && colima status >/dev/null 2>&1; then
     CHART_HOST=$(colima ssh -- getent hosts host.lima.internal | awk '{print $1}')
   else
-    # The first IPv4 gateway: the network may list an IPv6 range first.
-    CHART_HOST=$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Gateway}} {{end}}' | tr ' ' '\n' | grep -m1 -v ':' || true)
+    # The node's default route leads to this machine.
+    CHART_HOST=$(docker exec "${CLUSTER}-control-plane" ip -4 route show default | awk '{print $3; exit}')
   fi
 fi
 [[ -n "${CHART_HOST}" ]] || fail "cannot tell how the cluster reaches this machine; set CHART_HOST"
