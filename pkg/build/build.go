@@ -19,6 +19,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -30,6 +31,7 @@ import (
 	"sort"
 	"strings"
 
+	jsonpatch "github.com/evanphx/json-patch/v5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
@@ -174,7 +176,7 @@ func (b *builder) chart(name string, c Chart, dst string) error {
 		if err := os.Remove(filepath.Join(dst, ".complete")); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-	} else if err := b.wrap(name, paths, c.Exclude, dst); err != nil {
+	} else if err := b.wrap(name, paths, c.Exclude, c.Patches, dst); err != nil {
 		return err
 	}
 	if len(c.Values) > 0 {
@@ -208,7 +210,8 @@ func (b *builder) input(with map[string]any, out, chart string) PluginInput {
 }
 
 // wrap makes a chart that applies the manifests in paths, in order.
-func (b *builder) wrap(name string, paths []string, exclude []Selector, dst string) error {
+func (b *builder) wrap(name string, paths []string, exclude []Selector, patches []Patch, dst string) error {
+	matched := make([]bool, len(patches))
 	var files []string
 	for _, p := range paths {
 		if isChart(p) {
@@ -234,8 +237,8 @@ func (b *builder) wrap(name string, paths []string, exclude []Selector, dst stri
 		if err != nil {
 			return err
 		}
-		if len(exclude) > 0 {
-			if raw, err = dropObjects(raw, exclude); err != nil {
+		if len(exclude) > 0 || len(patches) > 0 {
+			if raw, err = editObjects(raw, exclude, patches, matched); err != nil {
 				return fmt.Errorf("%s: %w", filepath.Base(f), err)
 			}
 		}
@@ -244,6 +247,13 @@ func (b *builder) wrap(name string, paths []string, exclude []Selector, dst stri
 		out := filepath.Join(dst, "manifests", fmt.Sprintf("%04d-%s", i, filepath.Base(f)))
 		if err := os.WriteFile(out, raw, 0o644); err != nil {
 			return err
+		}
+	}
+	for i, m := range matched {
+		if !m {
+			// An upstream that renamed the object would otherwise ship
+			// unpatched without anyone noticing.
+			return fmt.Errorf("patch %d (%s %s) matched no object", i+1, patches[i].Kind, patches[i].Name)
 		}
 	}
 	chart := fmt.Sprintf("apiVersion: v2\nname: %s\nversion: %s\ntype: application\n", name, strings.TrimPrefix(b.recipe.Spec.Version, "v"))
@@ -261,9 +271,10 @@ func (b *builder) wrap(name string, paths []string, exclude []Selector, dst stri
 
 var docSeparator = regexp.MustCompile(`(?m)^---[ \t]*(#.*)?$`)
 
-// dropObjects removes the documents matching any selector and keeps the
-// rest byte for byte.
-func dropObjects(raw []byte, exclude []Selector) ([]byte, error) {
+// editObjects drops the documents matching any exclude selector and
+// applies the patches to the ones they match, recording which patches
+// matched. Untouched documents are kept byte for byte.
+func editObjects(raw []byte, exclude []Selector, patches []Patch, matched []bool) ([]byte, error) {
 	var kept [][]byte
 	for _, doc := range docSeparator.Split(string(raw), -1) {
 		var head struct {
@@ -275,18 +286,43 @@ func dropObjects(raw []byte, exclude []Selector) ([]byte, error) {
 		if err := yaml.Unmarshal([]byte(doc), &head); err != nil {
 			return nil, err
 		}
-		drop := false
-		for _, e := range exclude {
-			if (e.Kind == "" || e.Kind == head.Kind) && (e.Name == "" || e.Name == head.Metadata.Name) {
-				drop = true
-				break
+		if strings.TrimSpace(doc) == "" || matches(exclude, head.Kind, head.Metadata.Name) {
+			continue
+		}
+		out := []byte(strings.Trim(doc, "\n"))
+		for i, p := range patches {
+			if !matches([]Selector{p.Selector}, head.Kind, head.Metadata.Name) {
+				continue
 			}
+			matched[i] = true
+			js, err := yaml.YAMLToJSON(out)
+			if err != nil {
+				return nil, err
+			}
+			patch, err := json.Marshal(p.Merge)
+			if err != nil {
+				return nil, err
+			}
+			if js, err = jsonpatch.MergePatch(js, patch); err != nil {
+				return nil, fmt.Errorf("patch %s %s: %w", head.Kind, head.Metadata.Name, err)
+			}
+			if out, err = yaml.JSONToYAML(js); err != nil {
+				return nil, err
+			}
+			out = []byte(strings.Trim(string(out), "\n"))
 		}
-		if !drop && strings.TrimSpace(doc) != "" {
-			kept = append(kept, []byte(strings.Trim(doc, "\n")))
-		}
+		kept = append(kept, out)
 	}
 	return append(bytes.Join(kept, []byte("\n---\n")), '\n'), nil
+}
+
+func matches(sel []Selector, kind, name string) bool {
+	for _, e := range sel {
+		if (e.Kind == "" || e.Kind == kind) && (e.Name == "" || e.Name == name) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolve makes a source available on disk and returns its path.

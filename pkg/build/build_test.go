@@ -300,3 +300,40 @@ spec:
 		t.Fatalf("meta package source: %+v", src.Spec)
 	}
 }
+
+func TestPatchesChangeOnlyWhatTheyMatch(t *testing.T) {
+	dir := fixture(t, "")
+	recipe := filepath.Join(dir, RecipeFile)
+	raw, err := os.ReadFile(recipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := strings.Replace(string(raw), "    virt-operator: {from: [operator, accounts], exclude: [{kind: Namespace}]}\n", `    virt-operator:
+      from: [operator, accounts]
+      exclude: [{kind: Namespace}]
+      patches:
+        - kind: ConfigMap
+          name: alerts
+          merge: {data: {rule: null, owner: platform}}
+`, 1)
+	if patched == string(raw) {
+		t.Fatal("fixture did not change")
+	}
+	writeFile(t, recipe, patched)
+	res, err := Build(context.Background(), dir, Options{Fetcher: &source.Fetcher{CacheDir: t.TempDir()}, WorkDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := render(t, filepath.Join(res.TreeDir, "virt-operator"))
+	if strings.Contains(got, "is down") || !strings.Contains(got, "owner: platform") {
+		t.Errorf("patch not applied:\n%s", got)
+	}
+	if !strings.Contains(got, "name: a") || strings.Contains(got, "kind: Namespace") {
+		t.Errorf("other objects must be kept and exclusions still apply:\n%s", got)
+	}
+
+	writeFile(t, recipe, strings.Replace(patched, "name: alerts", "name: renamed-upstream", 1))
+	if _, err := Build(context.Background(), dir, Options{Fetcher: &source.Fetcher{CacheDir: t.TempDir()}, WorkDir: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "matched no object") {
+		t.Fatalf("a patch that matches nothing must fail the build, got %v", err)
+	}
+}
