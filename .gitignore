@@ -4,3 +4,4 @@
 *.out
 .DS_Store
 SESSION_LOG.md
+/site/

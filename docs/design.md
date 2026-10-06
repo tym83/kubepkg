@@ -1,10 +1,10 @@
-# Design: kubepkg v0.1
+# Design
 
-This document specifies the v0.1 API and the behaviour of the operator and the CLI. The reasons behind the choices are in [rationale.md](rationale.md).
+This document specifies the `v1alpha1` API and the behaviour of the operator and the CLI. The reasons behind the choices are in [rationale.md](rationale.md).
 
-## Scope of v0.1
+## Scope
 
-In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, a plan before changes, three backends (Helm, Flux and Argo CD), and settings that let a platform embed kubepkg without changing its code.
+In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, readiness conditions and pre-upgrade hooks, a plan before changes, four backends (Helm, werf, Flux and Argo CD), package repositories with a root of trust, a hub for several clusters, metrics and alerts, and settings that let a platform embed kubepkg without changing its code.
 
 Out of scope, on the roadmap: delegated roles for parts of a repository (TUF targets delegation), staged rollouts across clusters.
 
@@ -421,7 +421,7 @@ Configuration — operator flags, all off by default:
 | `--api-group` | serves the types under the platform's own group; `make crds-for-group GROUP=... OUT=...` writes matching CRDs. The CLI takes the same flag |
 | `--values-secret namespace/name` | layers the Secret's `values.yaml` under every component's values, for cluster-wide settings such as a domain or an issuer; a PackageSource opts out with the `kubepkg.dev/skip-platform-values` annotation. A missing Secret fails the release instead of installing it unconfigured |
 | `--namespace-label key=value` | labels every namespace the packages create (repeatable) |
-| `--backend helm\|flux\|argo` | how components are installed; `--argo-namespace` and `--argo-project` place Argo CD Applications |
+| `--backend helm\|werf\|flux\|argo` | how components are installed; `--argo-namespace` and `--argo-project` place Argo CD Applications, `--nelm-binary` names Nelm for werf |
 
 Releases are labelled `kubepkg.dev/package`; privileged components get `<group>/privileged`.
 
@@ -461,6 +461,7 @@ Building and publishing:
 | `repo index <dir> [--sign-key <file>]` | build a repository index from the PackageSources under a directory, signed |
 | `repo keygen <prefix>` | make an ed25519 key pair for signing |
 | `trust root new`, `trust root next`, `trust sign` | make root versions and add signatures to roots and indexes |
+| `cluster add`, `cluster list`, `set list` | register member clusters with a hub and follow PackageSets |
 | `push <dir> <oci-ref>` | publish a package tree as is |
 | `render <pkg>...` | write packages for Flux, Argo CD or helmfile, in kubepkg's order |
 

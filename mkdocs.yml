@@ -1,0 +1,69 @@
+site_name: kubepkg
+site_description: A package manager for Kubernetes clusters and the distributions built on them
+site_url: https://tym83.github.io/kubepkg/
+repo_url: https://github.com/tym83/kubepkg
+repo_name: tym83/kubepkg
+edit_uri: edit/main/docs/
+copyright: Licensed under the Apache License 2.0
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle: {icon: material/weather-night, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle: {icon: material/weather-sunny, name: Light mode}
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed: {alternate_style: true}
+  - pymdownx.highlight
+  - pymdownx.snippets:
+      base_path: [docs, "."]
+      check_paths: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quickstart: quickstart.md
+      - Installing kubepkg: install.md
+      - Concepts: concepts.md
+  - Guides:
+      - Installing and upgrading packages: guides/packages.md
+      - Upgrades, readiness and hooks: guides/upgrades.md
+      - Repositories and trust: guides/repositories.md
+      - Building packages: guides/building.md
+      - Making a distribution: guides/distributions.md
+      - Backends: Helm, werf, Flux, Argo CD: guides/backends.md
+      - GitOps without the operator: guides/gitops.md
+      - Several clusters: guides/multi-cluster.md
+      - Monitoring: guides/observability.md
+      - Embedding in a platform: guides/embedding.md
+  - Reference:
+      - CLI: reference/cli.md
+      - API: reference/api.md
+      - Recipe: reference/recipe.md
+      - Helm chart values: reference/chart.md
+  - Design:
+      - Design: design.md
+      - Why kubepkg: rationale.md
