@@ -828,3 +828,51 @@ func TestAComponentThatMovesLeavesItsOldPlaceFirst(t *testing.T) {
 		t.Fatalf("left behind: %v", e.be.releases)
 	}
 }
+
+func nsLabel(t *testing.T, c client.Client, name string) string {
+	t.Helper()
+	ns := &corev1.Namespace{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, ns); err != nil {
+		t.Fatal(err)
+	}
+	return ns.Labels[podSecurityLabel]
+}
+
+func TestPrivilegedGoesWhenThePrivilegedComponentLeaves(t *testing.T) {
+	e := newEnv(t)
+	// Somebody else's privileged namespace kubepkg must not touch.
+	e.create(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "admin", Labels: map[string]string{podSecurityLabel: "privileged"}}})
+	src := mkSource("mon", "1.0.0", true, "node-exporter", "kube-state", "dashboards")
+	for i := range src.Spec.Variants[0].Components {
+		c := &src.Spec.Variants[0].Components[i]
+		c.Install.Namespace = "monitoring"
+		c.Install.Privileged = c.Name == "node-exporter"
+		if c.Name == "dashboards" {
+			c.Install.Namespace = "admin" // not privileged, in a namespace somebody made privileged
+		}
+	}
+	e.create(src, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "mon"}})
+	e.reconcile("mon")
+	e.reconcile("mon")
+	if nsLabel(t, e.c, "monitoring") != "privileged" {
+		t.Fatal("monitoring is not privileged while node-exporter runs there")
+	}
+
+	// node-exporter moves to its own namespace.
+	p := e.pkg("mon")
+	p.Spec.Components = map[string]v1beta1.PackageComponent{"node-exporter": {Namespace: "node-exporter"}}
+	if err := e.c.Update(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("mon")
+	e.reconcile("mon")
+	if l := nsLabel(t, e.c, "monitoring"); l != "" {
+		t.Fatalf("monitoring stayed %q", l)
+	}
+	if nsLabel(t, e.c, "node-exporter") != "privileged" {
+		t.Fatal("node-exporter's new namespace is not privileged")
+	}
+	if nsLabel(t, e.c, "admin") != "privileged" {
+		t.Fatal("a level kubepkg did not set was taken away")
+	}
+}

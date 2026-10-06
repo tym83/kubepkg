@@ -786,35 +786,90 @@ func (r *PackageReconciler) dependencyReleases(ctx context.Context, reqs []resol
 func (r *PackageReconciler) reconcileNamespaces(ctx context.Context, pkg *v1beta1.Package, v *v1beta1.Variant) error {
 	targets := map[string]bool{}
 	for _, c := range enabledComponents(pkg, v) {
-		if c.Install.Namespace != "" {
-			targets[c.Install.Namespace] = targets[c.Install.Namespace] || c.Install.Privileged
+		if ns, _ := placement(pkg, c); ns != "" {
+			targets[ns] = targets[ns] || c.Install.Privileged
 		}
 	}
-	if len(targets) == 0 {
+	// Namespaces the package's components were in before: a privileged
+	// component may have left one.
+	left := map[string]bool{}
+	if revs, err := r.revisions(ctx, pkg.Name); err == nil {
+		if cur := lastOf(revs); cur != nil {
+			for _, c := range cur.Spec.Components {
+				if _, still := targets[c.Namespace]; !still && c.Namespace != "" {
+					left[c.Namespace] = true
+				}
+			}
+		}
+	}
+	if len(targets) == 0 && len(left) == 0 {
 		return nil
 	}
-	privileged, err := r.privilegedNamespaces(ctx, targets)
+	all := map[string]bool{}
+	for n, p := range targets {
+		all[n] = p
+	}
+	for n := range left {
+		all[n] = false
+	}
+	privileged, err := r.privilegedNamespaces(ctx, all)
 	if err != nil {
 		return err
 	}
-	names := make([]string, 0, len(targets))
-	for n := range targets {
+	names := make([]string, 0, len(all))
+	for n := range all {
 		names = append(names, n)
 	}
 	sort.Strings(names)
 	for _, n := range names {
+		if left[n] {
+			if !privileged[n] {
+				if err := r.unprivilege(ctx, n); err != nil {
+					return fmt.Errorf("namespace %s: %w", n, err)
+				}
+			}
+			continue
+		}
 		labels := map[string]string{}
 		for k, v := range r.Profile.NamespaceLabels {
 			labels[k] = v
 		}
 		if privileged[n] {
-			labels["pod-security.kubernetes.io/enforce"] = "privileged"
+			labels[podSecurityLabel] = "privileged"
+		} else if err := r.unprivilege(ctx, n); err != nil {
+			return fmt.Errorf("namespace %s: %w", n, err)
 		}
 		if err := r.ensureNamespace(ctx, n, labels); err != nil {
 			return fmt.Errorf("namespace %s: %w", n, err)
 		}
 	}
 	return nil
+}
+
+const (
+	podSecurityLabel = "pod-security.kubernetes.io/enforce"
+	// annotationPodSecurity marks a privileged pod security level kubepkg
+	// set, so it is the only one kubepkg ever takes away.
+	annotationPodSecurity = "kubepkg.dev/pod-security"
+)
+
+// unprivilege takes away a privileged level kubepkg set on a namespace
+// that no longer runs privileged components; one set by anybody else
+// stays.
+func (r *PackageReconciler) unprivilege(ctx context.Context, name string) error {
+	ns := &corev1.Namespace{}
+	if err := r.Get(ctx, types.NamespacedName{Name: name}, ns); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if ns.Annotations[annotationPodSecurity] != "privileged" {
+		return nil
+	}
+	patch := client.MergeFrom(ns.DeepCopy())
+	delete(ns.Annotations, annotationPodSecurity)
+	if ns.Labels[podSecurityLabel] == "privileged" {
+		delete(ns.Labels, podSecurityLabel)
+	}
+	return r.Patch(ctx, ns, patch)
 }
 
 // ensureNamespace creates a namespace or adds labels to it. It only adds:
@@ -826,6 +881,9 @@ func (r *PackageReconciler) ensureNamespace(ctx context.Context, name string, la
 		ns = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
 			Name: name, Labels: labels, Annotations: map[string]string{"helm.sh/resource-policy": "keep"},
 		}}
+		if v, ok := labels[podSecurityLabel]; ok {
+			ns.Annotations[annotationPodSecurity] = v
+		}
 		return client.IgnoreAlreadyExists(r.Create(ctx, ns))
 	}
 	if err != nil {
@@ -840,6 +898,12 @@ func (r *PackageReconciler) ensureNamespace(ctx context.Context, name string, la
 			}
 			ns.Labels[k] = v
 			changed = true
+			if k == podSecurityLabel {
+				if ns.Annotations == nil {
+					ns.Annotations = map[string]string{}
+				}
+				ns.Annotations[annotationPodSecurity] = v
+			}
 		}
 	}
 	if !changed {
@@ -868,8 +932,9 @@ func (r *PackageReconciler) privilegedNamespaces(ctx context.Context, targets ma
 			continue
 		}
 		for _, c := range enabledComponents(p, v) {
-			if _, relevant := targets[c.Install.Namespace]; relevant && c.Install.Privileged {
-				out[c.Install.Namespace] = true
+			ns, _ := placement(p, c)
+			if _, relevant := targets[ns]; relevant && c.Install.Privileged {
+				out[ns] = true
 			}
 		}
 	}
