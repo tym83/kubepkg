@@ -22,13 +22,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/fluxcd/pkg/apis/kustomize"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/resolve"
 	"github.com/tym83/kubepkg/pkg/source"
@@ -38,7 +39,7 @@ import (
 type Preparer interface {
 	// Prepare fills the chart location in c and returns a digest that
 	// changes whenever the chart content changes.
-	Prepare(ctx context.Context, src *v1alpha1.PackageSource, variant *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error)
+	Prepare(ctx context.Context, src *v1beta1.PackageSource, variant *v1beta1.Variant, comp *v1beta1.Component, c *backend.Component) (string, error)
 }
 
 // OCIPreparer puts charts on disk for the helm backend: published charts
@@ -50,7 +51,7 @@ type OCIPreparer struct {
 }
 
 // Prepare implements Preparer.
-func (p *OCIPreparer) Prepare(ctx context.Context, src *v1alpha1.PackageSource, variant *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
+func (p *OCIPreparer) Prepare(ctx context.Context, src *v1beta1.PackageSource, variant *v1beta1.Variant, comp *v1beta1.Component, c *backend.Component) (string, error) {
 	if ch := comp.Chart; ch != nil {
 		dir, digest, err := p.Fetcher.FetchChart(ctx, source.Chart{Repository: ch.Repository, Name: ch.Name, Version: ch.Version, Digest: ch.Digest})
 		if err != nil {
@@ -60,7 +61,7 @@ func (p *OCIPreparer) Prepare(ctx context.Context, src *v1alpha1.PackageSource, 
 		return digest, nil
 	}
 	ref := src.Spec.SourceRef
-	if ref == nil || ref.Kind != v1alpha1.SourceKindOCIArtifact {
+	if ref == nil || ref.Kind != v1beta1.SourceKindOCIArtifact {
 		kind := "none"
 		if ref != nil {
 			kind = ref.Kind
@@ -95,7 +96,7 @@ func (p *OCIPreparer) Prepare(ctx context.Context, src *v1alpha1.PackageSource, 
 
 // libraryPaths maps library names to paths; a library without a name is
 // known by the last element of its path.
-func libraryPaths(v *v1alpha1.Variant) map[string]string {
+func libraryPaths(v *v1beta1.Variant) map[string]string {
 	out := map[string]string{}
 	for _, l := range v.Libraries {
 		name := l.Name
@@ -118,7 +119,7 @@ type ChartPreparer struct {
 }
 
 // Prepare implements Preparer.
-func (p ChartPreparer) Prepare(_ context.Context, src *v1alpha1.PackageSource, _ *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
+func (p ChartPreparer) Prepare(_ context.Context, src *v1beta1.PackageSource, _ *v1beta1.Variant, comp *v1beta1.Component, c *backend.Component) (string, error) {
 	ch := comp.Chart
 	if ch == nil {
 		return "", fmt.Errorf("component %s: this backend installs published charts; build the package or use chart instead of path", comp.Name)
@@ -150,9 +151,9 @@ type desiredState struct {
 }
 
 type desiredComponent struct {
-	snapshot  v1alpha1.ComponentSnapshot
+	snapshot  v1beta1.ComponentSnapshot
 	backend   backend.Component
-	readyWhen []v1alpha1.ReadyCondition
+	readyWhen []v1beta1.ReadyCondition
 }
 
 func digestOf(v any) (string, error) {
@@ -164,14 +165,14 @@ func digestOf(v any) (string, error) {
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
-func variantName(pkg *v1alpha1.Package) string {
+func variantName(pkg *v1beta1.Package) string {
 	if pkg.Spec.Variant == "" {
 		return "default"
 	}
 	return pkg.Spec.Variant
 }
 
-func findVariant(src *v1alpha1.PackageSource, name string) *v1alpha1.Variant {
+func findVariant(src *v1beta1.PackageSource, name string) *v1beta1.Variant {
 	for i := range src.Spec.Variants {
 		if src.Spec.Variants[i].Name == name {
 			return &src.Spec.Variants[i]
@@ -180,7 +181,7 @@ func findVariant(src *v1alpha1.PackageSource, name string) *v1alpha1.Variant {
 	return nil
 }
 
-func sourceVersion(src *v1alpha1.PackageSource) string {
+func sourceVersion(src *v1beta1.PackageSource) string {
 	if src.Spec.Version == "" {
 		return resolve.Unversioned
 	}
@@ -188,8 +189,8 @@ func sourceVersion(src *v1alpha1.PackageSource) string {
 }
 
 // enabledComponents lists installable components the Package did not turn off.
-func enabledComponents(pkg *v1alpha1.Package, v *v1alpha1.Variant) []v1alpha1.Component {
-	var out []v1alpha1.Component
+func enabledComponents(pkg *v1beta1.Package, v *v1beta1.Variant) []v1beta1.Component {
+	var out []v1beta1.Component
 	for _, c := range v.Components {
 		if c.Install == nil {
 			continue
@@ -202,7 +203,7 @@ func enabledComponents(pkg *v1alpha1.Package, v *v1alpha1.Variant) []v1alpha1.Co
 	return out
 }
 
-func releaseName(c v1alpha1.Component) string {
+func releaseName(c v1beta1.Component) string {
 	if c.Install.ReleaseName != "" {
 		return c.Install.ReleaseName
 	}
@@ -212,7 +213,7 @@ func releaseName(c v1alpha1.Component) string {
 // buildDesired computes the desired state of a package. depReleases maps a
 // package this one depends on to its releases (namespace/name), for the flux
 // backend's dependsOn.
-func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Package, src *v1alpha1.PackageSource, v *v1alpha1.Variant, depReleases []string) (*desiredState, error) {
+func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1beta1.Package, src *v1beta1.PackageSource, v *v1beta1.Variant, depReleases []string) (*desiredState, error) {
 	d := &desiredState{
 		version:      sourceVersion(src),
 		variant:      v.Name,
@@ -220,16 +221,16 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 	}
 	var err error
 	d.digest, err = digestOf(struct {
-		Package v1alpha1.PackageSpec
+		Package v1beta1.PackageSpec
 		Retry   string
-		Source  v1alpha1.PackageSourceSpec
+		Source  v1beta1.PackageSourceSpec
 	}{pkg.Spec, pkg.Annotations[AnnotationRetry], src.Spec})
 	if err != nil {
 		return nil, err
 	}
 
 	comps := enabledComponents(pkg, v)
-	byName := map[string]v1alpha1.Component{}
+	byName := map[string]v1beta1.Component{}
 	for _, c := range comps {
 		if c.Install.Namespace == "" {
 			return nil, fmt.Errorf("component %s has empty namespace in Install section", c.Name)
@@ -238,7 +239,7 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 	}
 	for _, c := range comps {
 		for _, dep := range c.Install.DependsOn {
-			if h, ok := byName[dep]; ok && h.Install.Phase == v1alpha1.PhasePreUpgrade && c.Install.Phase != v1alpha1.PhasePreUpgrade {
+			if h, ok := byName[dep]; ok && h.Install.Phase == v1beta1.PhasePreUpgrade && c.Install.Phase != v1beta1.PhasePreUpgrade {
 				return nil, fmt.Errorf("component %s depends on %s, a pre-upgrade hook, which runs only on upgrades", c.Name, dep)
 			}
 		}
@@ -269,10 +270,10 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 			Namespace:        ns,
 			Adopt:            pkg.Annotations[AnnotationAdopt] == "true",
 			Values:           values,
-			Labels:           map[string]string{v1alpha1.LabelPackage: pkg.Name},
+			Labels:           map[string]string{v1beta1.LabelPackage: pkg.Name},
 			UpgradeCRDs:      c.Install.UpgradeCRDs,
 			WaitStrategy:     c.Install.WaitStrategy,
-			HealthCheckExprs: c.Install.HealthCheckExprs,
+			HealthCheckExprs: FluxHealthChecks(c.Install.HealthCheckExprs),
 			Timeout:          timeout,
 		}
 		if c.Install.Privileged {
@@ -304,7 +305,7 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 			return nil, err
 		}
 		dc := desiredComponent{
-			snapshot: v1alpha1.ComponentSnapshot{
+			snapshot: v1beta1.ComponentSnapshot{
 				Name:         c.Name,
 				ReleaseName:  bc.ReleaseName,
 				Namespace:    bc.Namespace,
@@ -315,7 +316,7 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 			backend:   bc,
 			readyWhen: c.Install.ReadyWhen,
 		}
-		if c.Install.Phase == v1alpha1.PhasePreUpgrade {
+		if c.Install.Phase == v1beta1.PhasePreUpgrade {
 			d.hooks = append(d.hooks, dc)
 		} else {
 			d.components = append(d.components, dc)
@@ -324,9 +325,22 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 	return d, nil
 }
 
+// FluxHealthChecks hands health checks to the flux backend in Flux's own
+// type, which has the same shape.
+func FluxHealthChecks(in []v1beta1.HealthCheck) []kustomize.CustomHealthCheck {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]kustomize.CustomHealthCheck, 0, len(in))
+	for _, h := range in {
+		out = append(out, kustomize.CustomHealthCheck{APIVersion: h.APIVersion, Kind: h.Kind, HealthCheckExpressions: kustomize.HealthCheckExpressions{Current: h.Current, InProgress: h.InProgress, Failed: h.Failed}})
+	}
+	return out
+}
+
 // placement is where a component goes: the package's install settings,
 // unless the Package overrides them.
-func placement(pkg *v1alpha1.Package, c v1alpha1.Component) (namespace, release string) {
+func placement(pkg *v1beta1.Package, c v1beta1.Component) (namespace, release string) {
 	namespace, release = c.Install.Namespace, releaseName(c)
 	if o, ok := pkg.Spec.Components[c.Name]; ok {
 		if o.Namespace != "" {
@@ -341,7 +355,7 @@ func placement(pkg *v1alpha1.Package, c v1alpha1.Component) (namespace, release 
 
 // topoOrder sorts components so dependencies come first; ties keep the
 // PackageSource order. A cycle is an error, not something to guess around.
-func topoOrder(comps []v1alpha1.Component) ([]string, error) {
+func topoOrder(comps []v1beta1.Component) ([]string, error) {
 	index := map[string]int{}
 	for i, c := range comps {
 		index[c.Name] = i
@@ -380,7 +394,7 @@ func topoOrder(comps []v1alpha1.Component) ([]string, error) {
 }
 
 // sameComponents reports whether a revision already recorded this state.
-func sameComponents(a []v1alpha1.ComponentSnapshot, b []desiredComponent) bool {
+func sameComponents(a []v1beta1.ComponentSnapshot, b []desiredComponent) bool {
 	if len(a) != len(b) {
 		return false
 	}

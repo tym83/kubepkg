@@ -15,10 +15,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1beta1
 
 import (
-	"github.com/fluxcd/pkg/apis/kustomize"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -37,7 +36,7 @@ const UnversionedVersion = "0.0.0-unversioned"
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,shortName={pks}
-// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1beta1"
+// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Package version"
 // +kubebuilder:printcolumn:name="Build",type="integer",JSONPath=".spec.build",description="Packaging build of that version"
@@ -266,7 +265,7 @@ type ComponentInstall struct {
 	// this component renders, so the component reports Ready only when the
 	// resource is actually healthy.
 	// +optional
-	HealthCheckExprs []kustomize.CustomHealthCheck `json:"healthCheckExprs,omitempty"`
+	HealthCheckExprs []HealthCheck `json:"healthCheckExprs,omitempty"`
 
 	// Phase PreUpgrade makes the component a hook: it runs only when the
 	// package moves to another version, before every other component,
@@ -368,12 +367,25 @@ type Component struct {
 
 // PackageSourceStatus defines the observed state of PackageSource
 type PackageSourceStatus struct {
-	// Variants is a comma-separated list of package variant names
-	// This field is populated by the controller based on spec.variants keys
-	// +optional
-	Variants string `json:"variants,omitempty"`
 
 	// Conditions represents the latest available observations of a PackageSource's state
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// HealthCheck tells when a custom resource a component renders is
+// healthy, with CEL expressions over the object (flux backend).
+type HealthCheck struct {
+	// APIVersion of the custom resource.
+	APIVersion string `json:"apiVersion"`
+	// Kind of the custom resource.
+	Kind string `json:"kind"`
+	// Current is true when the resource is healthy.
+	Current string `json:"current"`
+	// InProgress is true while the resource is being reconciled.
+	// +optional
+	InProgress string `json:"inProgress,omitempty"`
+	// Failed is true when the resource has failed.
+	// +optional
+	Failed string `json:"failed,omitempty"`
 }

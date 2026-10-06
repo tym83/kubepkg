@@ -14,7 +14,7 @@ kubepkg repo remove vendor
 `repo add` creates a `Repository` object. You can also write one yourself, or list repositories in the chart's values:
 
 ```yaml
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: Repository
 metadata:
   name: main

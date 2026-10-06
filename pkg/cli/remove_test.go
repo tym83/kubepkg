@@ -23,16 +23,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
-func installed(name string, dependency bool, provides []string, requires ...v1alpha1.Requirement) []client.Object {
-	p := &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: name}}
+func installed(name string, dependency bool, provides []string, requires ...v1beta1.Requirement) []client.Object {
+	p := &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if dependency {
 		p.Annotations = map[string]string{AnnotationDependency: "required by something"}
 	}
-	src := &v1alpha1.PackageSource{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1alpha1.PackageSourceSpec{
-		Version: "1.0.0", Provides: provides, Variants: []v1alpha1.Variant{{Name: "default", Requires: requires}},
+	src := &v1beta1.PackageSource{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1beta1.PackageSourceSpec{
+		Version: "1.0.0", Provides: provides, Variants: []v1beta1.Variant{{Name: "default", Requires: requires}},
 	}}
 	return []client.Object{p, src}
 }
@@ -56,12 +56,12 @@ func names(rs []Removal) string {
 
 func TestRemoveRefusesWhatOthersRequire(t *testing.T) {
 	c := clusterOf(t,
-		installed("virtualization", false, nil, v1alpha1.Requirement{Package: "kubevirt"}, v1alpha1.Requirement{Package: "cdi"}),
-		installed("kubevirt", true, nil, v1alpha1.Requirement{Capability: "storage-importer"}),
+		installed("virtualization", false, nil, v1beta1.Requirement{Package: "kubevirt"}, v1beta1.Requirement{Package: "cdi"}),
+		installed("kubevirt", true, nil, v1beta1.Requirement{Capability: "storage-importer"}),
 		installed("cdi", true, []string{"storage-importer"}),
 		installed("ingress-a", false, []string{"ingress"}),
 		installed("ingress-b", false, []string{"ingress"}),
-		installed("app", false, nil, v1alpha1.Requirement{Capability: "ingress"}, v1alpha1.Requirement{Capability: "api:apps/v1"}),
+		installed("app", false, nil, v1beta1.Requirement{Capability: "ingress"}, v1beta1.Requirement{Capability: "api:apps/v1"}),
 	)
 	ctx := context.Background()
 
@@ -84,8 +84,8 @@ func TestRemoveRefusesWhatOthersRequire(t *testing.T) {
 
 func TestAutoremoveFollowsTheChain(t *testing.T) {
 	c := clusterOf(t,
-		installed("virtualization", false, nil, v1alpha1.Requirement{Package: "kubevirt"}, v1alpha1.Requirement{Package: "cdi"}),
-		installed("kubevirt", true, nil, v1alpha1.Requirement{Capability: "storage-importer"}),
+		installed("virtualization", false, nil, v1beta1.Requirement{Package: "kubevirt"}, v1beta1.Requirement{Package: "cdi"}),
+		installed("kubevirt", true, nil, v1beta1.Requirement{Capability: "storage-importer"}),
 		installed("cdi", true, []string{"storage-importer"}),
 		installed("cert-manager", false, nil),
 	)

@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 // Revision outcomes counted by kubepkg_revisions_total.
@@ -60,7 +60,7 @@ func init() {
 }
 
 // recordPackage publishes a package's state after a reconcile.
-func recordPackage(pkg *v1alpha1.Package) {
+func recordPackage(pkg *v1beta1.Package) {
 	ready := 0.0
 	if isReady(pkg.Status.Conditions) {
 		ready = 1
@@ -83,7 +83,7 @@ func countRevision(pkg, outcome string) {
 	revisionsTotal.WithLabelValues(pkg, outcome).Inc()
 }
 
-func recordRepository(rp *v1alpha1.Repository, ok bool) {
+func recordRepository(rp *v1beta1.Repository, ok bool) {
 	v := 0.0
 	if ok {
 		v = 1

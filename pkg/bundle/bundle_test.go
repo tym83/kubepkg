@@ -36,7 +36,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/images"
 	"github.com/tym83/kubepkg/pkg/repo"
 	"github.com/tym83/kubepkg/pkg/source"
@@ -150,7 +150,7 @@ type fixture struct {
 	upstream, indexURL string
 	pub                []byte
 	ver                repo.Version
-	chart              *v1alpha1.ChartRef
+	chart              *v1beta1.ChartRef
 	image              string
 }
 
@@ -179,8 +179,8 @@ func publish(t *testing.T, pinImages bool) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.chart = &v1alpha1.ChartRef{Repository: "oci://" + f.upstream + "/packages/app", Name: "app", Version: "1.0.0-1", Digest: pushed.LayerDigest}
-	spec := v1alpha1.PackageSourceSpec{Version: "1.0.0", Build: 1, Variants: []v1alpha1.Variant{{Name: "default", Components: []v1alpha1.Component{{Name: "app", Chart: f.chart}}}}}
+	f.chart = &v1beta1.ChartRef{Repository: "oci://" + f.upstream + "/packages/app", Name: "app", Version: "1.0.0-1", Digest: pushed.LayerDigest}
+	spec := v1beta1.PackageSourceSpec{Version: "1.0.0", Build: 1, Variants: []v1beta1.Variant{{Name: "default", Components: []v1beta1.Component{{Name: "app", Chart: f.chart}}}}}
 	if pinImages {
 		spec.Images = []string{f.image}
 	}
@@ -223,7 +223,7 @@ func makeBundle(t *testing.T, f fixture) string {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now()
-	_, rec, err := Load(ctx, []Source{{Name: "main", Spec: v1alpha1.RepositorySpec{URL: f.indexURL, PublicKeys: []string{string(f.pub)}}}}, repo.DefaultFetchers(), now)
+	_, rec, err := Load(ctx, []Source{{Name: "main", Spec: v1beta1.RepositorySpec{URL: f.indexURL, PublicKeys: []string{string(f.pub)}}}}, repo.DefaultFetchers(), now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestBundleRoundTripIntoAMirror(t *testing.T) {
 	f := publish(t, true)
 	dir := makeBundle(t, f)
 	ctx := context.Background()
-	trust := v1alpha1.RepositorySpec{PublicKeys: []string{string(f.pub)}}
+	trust := v1beta1.RepositorySpec{PublicKeys: []string{string(f.pub)}}
 
 	v, err := Verify(ctx, dir, trust, time.Now(), false)
 	if err != nil {
@@ -299,13 +299,13 @@ func (fileOnly) FetchIndex(_ context.Context, u string) ([]byte, error) {
 func TestVerifyRefusesWhatTheRepositoryDidNotSign(t *testing.T) {
 	ctx := context.Background()
 	f := publish(t, true)
-	trust := v1alpha1.RepositorySpec{PublicKeys: []string{string(f.pub)}}
+	trust := v1beta1.RepositorySpec{PublicKeys: []string{string(f.pub)}}
 
 	_, other, _ := repo.GenerateKey()
-	if _, err := Verify(ctx, makeBundle(t, f), v1alpha1.RepositorySpec{PublicKeys: []string{string(other)}}, time.Now(), false); err == nil {
+	if _, err := Verify(ctx, makeBundle(t, f), v1beta1.RepositorySpec{PublicKeys: []string{string(other)}}, time.Now(), false); err == nil {
 		t.Error("a bundle verified with keys that did not sign its index")
 	}
-	if _, err := Verify(ctx, makeBundle(t, f), v1alpha1.RepositorySpec{}, time.Now(), false); err == nil {
+	if _, err := Verify(ctx, makeBundle(t, f), v1beta1.RepositorySpec{}, time.Now(), false); err == nil {
 		t.Error("a bundle verified with no keys at all")
 	}
 
@@ -345,7 +345,7 @@ func TestImagesTheRepositoryDoesNotPin(t *testing.T) {
 	if len(m.Images) != 1 || m.Images[0].Pinned || m.Images[0].Ref != f.image {
 		t.Fatalf("images found in the charts: %+v", m.Images)
 	}
-	trust := v1alpha1.RepositorySpec{PublicKeys: []string{string(f.pub)}}
+	trust := v1beta1.RepositorySpec{PublicKeys: []string{string(f.pub)}}
 	if _, err := Verify(ctx, dir, trust, time.Now(), false); err == nil || !strings.Contains(err.Error(), "--allow-unpinned-images") {
 		t.Fatalf("unpinned images must be refused by default: %v", err)
 	}

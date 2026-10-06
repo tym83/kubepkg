@@ -15,15 +15,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains the first kubepkg API. It is deprecated: use
-// v1beta1, which clusters store and which has the same schema.
+// Package v1beta1 contains the kubepkg API.
 //
 // The types are served under kubepkg.dev by default. A platform that embeds
 // kubepkg may serve them under its own group instead.
 //
 // +kubebuilder:object:generate=true
 // +groupName=kubepkg.dev
-package v1alpha1
+package v1beta1
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,8 +32,9 @@ import (
 const (
 	// GroupName is the native API group.
 	GroupName = "kubepkg.dev"
-	// Version is served, deprecated, next to v1beta1.
-	Version = "v1alpha1"
+	// Version is the version clusters store; v1alpha1 is still served,
+	// with a deprecation warning, and has the same schema.
+	Version = "v1beta1"
 )
 
 // GroupVersion is the native group version.

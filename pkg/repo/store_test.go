@@ -23,12 +23,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 func entry(t *testing.T, version string, build int32) Version {
 	t.Helper()
-	spec := v1alpha1.PackageSourceSpec{Version: version, Build: build}
+	spec := v1beta1.PackageSourceSpec{Version: version, Build: build}
 	d, err := SpecDigest(spec)
 	if err != nil {
 		t.Fatal(err)

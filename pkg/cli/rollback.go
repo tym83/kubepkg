@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/controller"
 )
 
@@ -43,13 +43,13 @@ current one. The operator records the result as a new revision.`,
 				return err
 			}
 			ctx := cmd.Context()
-			var pkg v1alpha1.Package
+			var pkg v1beta1.Package
 			if err := c.Get(ctx, client.ObjectKey{Name: args[0]}, &pkg); err != nil {
 				return err
 			}
 			if to == 0 {
-				var revs v1alpha1.PackageRevisionList
-				if err := c.List(ctx, &revs, client.MatchingLabels{v1alpha1.LabelPackage: pkg.Name}); err != nil {
+				var revs v1beta1.PackageRevisionList
+				if err := c.List(ctx, &revs, client.MatchingLabels{v1beta1.LabelPackage: pkg.Name}); err != nil {
 					return err
 				}
 				if to = previousApplied(revs.Items, pkg.Status.CurrentRevision); to == 0 {
@@ -74,10 +74,10 @@ current one. The operator records the result as a new revision.`,
 
 // previousApplied returns the newest revision older than current that was
 // applied successfully, or 0.
-func previousApplied(revs []v1alpha1.PackageRevision, current int64) int64 {
+func previousApplied(revs []v1beta1.PackageRevision, current int64) int64 {
 	sort.Slice(revs, func(i, j int) bool { return revs[i].Spec.Revision > revs[j].Spec.Revision })
 	for _, r := range revs {
-		if r.Spec.Revision < current && (r.Status.Phase == v1alpha1.PhaseApplied || r.Status.Phase == v1alpha1.PhaseSuperseded) {
+		if r.Spec.Revision < current && (r.Status.Phase == v1beta1.PhaseApplied || r.Status.Phase == v1beta1.PhaseSuperseded) {
 			return r.Spec.Revision
 		}
 	}

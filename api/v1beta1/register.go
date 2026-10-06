@@ -14,17 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package v1beta1
 
 import (
-	"github.com/tym83/kubepkg/api/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// ReleaseName is the release a component becomes.
-func ReleaseName(c v1beta1.Component) string { return releaseName(c) }
-
-// ComponentOrder lists component names so every component comes after the
-// ones it depends on, keeping PackageSource order otherwise; a cycle is an
-// error. Tools that render packages for other installers use the order
-// the operator applies them in.
-func ComponentOrder(comps []v1beta1.Component) ([]string, error) { return topoOrder(comps) }
+func metav1AddToGroupVersion(s *runtime.Scheme, gv schema.GroupVersion) {
+	metav1.AddToGroupVersion(s, gv)
+}

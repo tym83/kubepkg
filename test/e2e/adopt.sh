@@ -34,7 +34,7 @@ mkdir -p "${WORK}/sources" "${WORK}/www"
 for p in hello:hello:e2e-hello raw:raw:e2e-raw raw2:raw:e2e-raw2; do
   IFS=: read -r name chart ns <<< "${p}"
   cat > "${WORK}/sources/${name}.yaml" <<EOF
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: PackageSource
 metadata: {name: ${name}}
 spec:

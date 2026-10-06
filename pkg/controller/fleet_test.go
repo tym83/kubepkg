@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 type fakeMembers struct {
@@ -51,7 +51,7 @@ func (c countingClient) Delete(ctx context.Context, obj client.Object, opts ...c
 	return c.Client.Delete(ctx, obj, opts...)
 }
 
-func (f *fakeMembers) For(_ context.Context, c *v1alpha1.Cluster) (*Member, error) {
+func (f *fakeMembers) For(_ context.Context, c *v1beta1.Cluster) (*Member, error) {
 	if f.down[c.Name] {
 		return nil, errors.New("connection refused")
 	}
@@ -61,11 +61,11 @@ func (f *fakeMembers) For(_ context.Context, c *v1alpha1.Cluster) (*Member, erro
 func kubepkgClient(t *testing.T, objs ...client.Object) client.Client {
 	t.Helper()
 	sch := runtime.NewScheme()
-	if err := v1alpha1.AddToScheme(sch); err != nil {
+	if err := v1beta1.AddToScheme(sch); err != nil {
 		t.Fatal(err)
 	}
 	return fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).
-		WithStatusSubresource(&v1alpha1.Package{}, &v1alpha1.Cluster{}, &v1alpha1.PackageSet{}).Build()
+		WithStatusSubresource(&v1beta1.Package{}, &v1beta1.Cluster{}, &v1beta1.PackageSet{}).Build()
 }
 
 type fleet struct {
@@ -76,8 +76,8 @@ type fleet struct {
 }
 
 func newFleet(t *testing.T) *fleet {
-	cluster := func(name, env string) *v1alpha1.Cluster {
-		return &v1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"env": env}}}
+	cluster := func(name, env string) *v1beta1.Cluster {
+		return &v1beta1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"env": env}}}
 	}
 	hub := kubepkgClient(t, cluster("a", "prod"), cluster("b", "prod"), cluster("c", "dev"))
 	m := &fakeMembers{clients: map[string]client.Client{"a": kubepkgClient(t), "b": kubepkgClient(t), "c": kubepkgClient(t)}, down: map[string]bool{}}
@@ -91,22 +91,22 @@ func (f *fleet) reconcile() {
 	}
 }
 
-func (f *fleet) set() *v1alpha1.PackageSet {
+func (f *fleet) set() *v1beta1.PackageSet {
 	f.t.Helper()
-	s := &v1alpha1.PackageSet{}
+	s := &v1beta1.PackageSet{}
 	if err := f.hub.Get(context.Background(), types.NamespacedName{Name: "base"}, s); err != nil {
 		f.t.Fatal(err)
 	}
 	return s
 }
 
-func (f *fleet) packages(cluster string) map[string]v1alpha1.Package {
+func (f *fleet) packages(cluster string) map[string]v1beta1.Package {
 	f.t.Helper()
-	var list v1alpha1.PackageList
+	var list v1beta1.PackageList
 	if err := f.members.clients[cluster].List(context.Background(), &list); err != nil {
 		f.t.Fatal(err)
 	}
-	out := map[string]v1alpha1.Package{}
+	out := map[string]v1beta1.Package{}
 	for _, p := range list.Items {
 		out[p.Name] = p
 	}
@@ -116,7 +116,7 @@ func (f *fleet) packages(cluster string) map[string]v1alpha1.Package {
 func (f *fleet) markReady(cluster, name string) {
 	f.t.Helper()
 	c := f.members.clients[cluster]
-	p := &v1alpha1.Package{}
+	p := &v1beta1.Package{}
 	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, p); err != nil {
 		f.t.Fatal(err)
 	}
@@ -126,14 +126,14 @@ func (f *fleet) markReady(cluster, name string) {
 	}
 }
 
-func baseSet() *v1alpha1.PackageSet {
-	return &v1alpha1.PackageSet{
+func baseSet() *v1beta1.PackageSet {
+	return &v1beta1.PackageSet{
 		ObjectMeta: metav1.ObjectMeta{Name: "base"},
-		Spec: v1alpha1.PackageSetSpec{
+		Spec: v1beta1.PackageSetSpec{
 			ClusterSelector: metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}},
-			Repositories:    []v1alpha1.PackageSetRepository{{Name: "main", Spec: v1alpha1.RepositorySpec{URL: "https://packages.example.org/index.yaml"}}},
-			Packages: []v1alpha1.PackageSetPackage{
-				{Name: "cert-manager", Spec: v1alpha1.PackageSpec{Version: "~1.21"}},
+			Repositories:    []v1beta1.PackageSetRepository{{Name: "main", Spec: v1beta1.RepositorySpec{URL: "https://packages.example.org/index.yaml"}}},
+			Packages: []v1beta1.PackageSetPackage{
+				{Name: "cert-manager", Spec: v1beta1.PackageSpec{Version: "~1.21"}},
 				{Name: "app"},
 			},
 		},
@@ -143,7 +143,7 @@ func baseSet() *v1alpha1.PackageSet {
 func TestPackageSetSpreadsAndReports(t *testing.T) {
 	f := newFleet(t)
 	// b already has an app of its own.
-	if err := f.members.clients["b"].Create(context.Background(), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}}); err != nil {
+	if err := f.members.clients["b"].Create(context.Background(), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.hub.Create(context.Background(), baseSet()); err != nil {
@@ -152,16 +152,16 @@ func TestPackageSetSpreadsAndReports(t *testing.T) {
 	f.reconcile()
 
 	a := f.packages("a")
-	if a["cert-manager"].Spec.Version != "~1.21" || a["cert-manager"].Labels[v1alpha1.LabelPackageSet] != "base" || len(a) != 2 {
+	if a["cert-manager"].Spec.Version != "~1.21" || a["cert-manager"].Labels[v1beta1.LabelPackageSet] != "base" || len(a) != 2 {
 		t.Fatalf("cluster a: %+v", a)
 	}
 	if len(f.packages("c")) != 0 {
 		t.Fatal("a cluster outside the selector got packages")
 	}
-	if got := f.packages("b")["app"].Labels[v1alpha1.LabelPackageSet]; got != "" {
+	if got := f.packages("b")["app"].Labels[v1beta1.LabelPackageSet]; got != "" {
 		t.Fatal("the set took over a Package it did not create")
 	}
-	repo := &v1alpha1.Repository{}
+	repo := &v1beta1.Repository{}
 	if err := f.members.clients["a"].Get(context.Background(), types.NamespacedName{Name: "main"}, repo); err != nil || repo.Spec.URL == "" {
 		t.Fatalf("repository on a: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestPackageSetSpreadsAndReports(t *testing.T) {
 	}
 
 	// A cluster that leaves the selector loses what the set wrote.
-	ca := &v1alpha1.Cluster{}
+	ca := &v1beta1.Cluster{}
 	if err := f.hub.Get(context.Background(), types.NamespacedName{Name: "a"}, ca); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestDeletingASetCleansUpButWaitsForUnreachableClusters(t *testing.T) {
 	if n := len(f.packages("b")); n != 0 {
 		t.Fatalf("b keeps %d packages", n)
 	}
-	if err := f.hub.Get(context.Background(), types.NamespacedName{Name: "base"}, &v1alpha1.PackageSet{}); err == nil {
+	if err := f.hub.Get(context.Background(), types.NamespacedName{Name: "base"}, &v1beta1.PackageSet{}); err == nil {
 		t.Fatal("the set was not released")
 	}
 }
@@ -239,17 +239,17 @@ func TestDeletingASetCleansUpButWaitsForUnreachableClusters(t *testing.T) {
 func (f *fleet) markFailed(cluster, name string) {
 	f.t.Helper()
 	c := f.members.clients[cluster]
-	p := &v1alpha1.Package{}
+	p := &v1beta1.Package{}
 	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, p); err != nil {
 		f.t.Fatal(err)
 	}
-	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{Type: "Ready", Status: metav1.ConditionFalse, Reason: v1alpha1.ReasonUpgradeRolledBack, Message: "pods crashlooping", ObservedGeneration: p.Generation})
+	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{Type: "Ready", Status: metav1.ConditionFalse, Reason: v1beta1.ReasonUpgradeRolledBack, Message: "pods crashlooping", ObservedGeneration: p.Generation})
 	if err := c.Status().Update(context.Background(), p); err != nil {
 		f.t.Fatal(err)
 	}
 }
 
-func (f *fleet) status(cluster string) v1alpha1.PackageSetClusterStatus {
+func (f *fleet) status(cluster string) v1beta1.PackageSetClusterStatus {
 	f.t.Helper()
 	for _, c := range f.set().Status.Clusters {
 		if c.Name == cluster {
@@ -257,12 +257,12 @@ func (f *fleet) status(cluster string) v1alpha1.PackageSetClusterStatus {
 		}
 	}
 	f.t.Fatalf("no status for %s", cluster)
-	return v1alpha1.PackageSetClusterStatus{}
+	return v1beta1.PackageSetClusterStatus{}
 }
 
-func oneBy(s *v1alpha1.PackageSet) *v1alpha1.PackageSet {
+func oneBy(s *v1beta1.PackageSet) *v1beta1.PackageSet {
 	s.Spec.Packages = s.Spec.Packages[:1]
-	s.Spec.Rollout = &v1alpha1.PackageSetRollout{MaxInProgress: 1}
+	s.Spec.Rollout = &v1beta1.PackageSetRollout{MaxInProgress: 1}
 	return s
 }
 
@@ -329,7 +329,7 @@ func TestRolloutOneClusterAtATimeAndPauseOnFailure(t *testing.T) {
 
 func TestCanariesGoFirst(t *testing.T) {
 	f := newFleet(t)
-	cb := &v1alpha1.Cluster{}
+	cb := &v1beta1.Cluster{}
 	if err := f.hub.Get(context.Background(), types.NamespacedName{Name: "b"}, cb); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestCanariesGoFirst(t *testing.T) {
 	}
 	set := baseSet()
 	set.Spec.Packages = set.Spec.Packages[:1]
-	set.Spec.Rollout = &v1alpha1.PackageSetRollout{Canary: &metav1.LabelSelector{MatchLabels: map[string]string{"ring": "canary"}}}
+	set.Spec.Rollout = &v1beta1.PackageSetRollout{Canary: &metav1.LabelSelector{MatchLabels: map[string]string{"ring": "canary"}}}
 	if err := f.hub.Create(context.Background(), set); err != nil {
 		t.Fatal(err)
 	}
@@ -369,18 +369,18 @@ func TestAClusterMovesBetweenSetsWithoutReinstalling(t *testing.T) {
 			edge.Spec.ClusterSelector = metav1.LabelSelector{MatchLabels: map[string]string{"env": "edge"}}
 			edge.Spec.Packages = base.Spec.Packages[:1]
 			edge.Spec.Packages[0].Spec.Version = "~1.22"
-			for _, s := range []*v1alpha1.PackageSet{base, edge} {
+			for _, s := range []*v1beta1.PackageSet{base, edge} {
 				if err := f.hub.Create(ctx, s); err != nil {
 					t.Fatal(err)
 				}
 			}
 			f.reconcile()
 			before := f.packages("a")["cert-manager"]
-			if before.Labels[v1alpha1.LabelPackageSet] != "base" {
+			if before.Labels[v1beta1.LabelPackageSet] != "base" {
 				t.Fatalf("setup: %+v", before.Labels)
 			}
 
-			ca := &v1alpha1.Cluster{}
+			ca := &v1beta1.Cluster{}
 			if err := f.hub.Get(ctx, types.NamespacedName{Name: "a"}, ca); err != nil {
 				t.Fatal(err)
 			}
@@ -395,7 +395,7 @@ func TestAClusterMovesBetweenSetsWithoutReinstalling(t *testing.T) {
 				}
 				// The new set takes the package at once: base no longer
 				// wants it there, so there is no conflict to report.
-				if got := f.packages("a")["cert-manager"].Labels[v1alpha1.LabelPackageSet]; got != "edge" {
+				if got := f.packages("a")["cert-manager"].Labels[v1beta1.LabelPackageSet]; got != "edge" {
 					t.Fatalf("the new set did not take the package over: owner %q", got)
 				}
 				f.reconcile()
@@ -414,7 +414,7 @@ func TestAClusterMovesBetweenSetsWithoutReinstalling(t *testing.T) {
 			if !ok {
 				t.Fatal("the package was removed while moving between sets")
 			}
-			if after.UID != before.UID || after.Labels[v1alpha1.LabelPackageSet] != "edge" || after.Spec.Version != "~1.22" {
+			if after.UID != before.UID || after.Labels[v1beta1.LabelPackageSet] != "edge" || after.Spec.Version != "~1.22" {
 				t.Fatalf("after the move: uid %s->%s, labels %v, version %s", before.UID, after.UID, after.Labels, after.Spec.Version)
 			}
 		})

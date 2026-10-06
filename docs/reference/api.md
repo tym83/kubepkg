@@ -2,7 +2,7 @@
 
 Generated from the CRDs by `make docs`; do not edit.
 
-All resources are cluster-scoped and served as `kubepkg.dev/v1alpha1`, or under the group a platform chooses with `--api-group`.
+All resources are cluster-scoped and served as `kubepkg.dev/v1beta1`, or under the group a platform chooses with `--api-group`. `v1alpha1` is still served, deprecated, with the same schema; see [API versions](api-versions.md).
 
 - [Cluster](#cluster)
 - [Package](#package)
@@ -209,11 +209,11 @@ Short names: `pks`.
 | `variants[].components[].install` | object | Install defines installation parameters for this component |
 | `variants[].components[].install.dependsOn` | []string | DependsOn is a list of component names that must be installed before this component |
 | `variants[].components[].install.healthCheckExprs` | []object | HealthCheckExprs are CEL health expressions for the custom resource(s) this component renders, so the component reports Ready only when the resource is actually healthy. |
-| `variants[].components[].install.healthCheckExprs[].apiVersion` | string, required | APIVersion of the custom resource under evaluation. |
-| `variants[].components[].install.healthCheckExprs[].current` | string, required | Current is the CEL expression that determines if the status of the custom resource has reached the desired state. |
-| `variants[].components[].install.healthCheckExprs[].failed` | string | Failed is the CEL expression that determines if the status of the custom resource has failed to reach the desired state. |
-| `variants[].components[].install.healthCheckExprs[].inProgress` | string | InProgress is the CEL expression that determines if the status of the custom resource has not yet reached the desired state. |
-| `variants[].components[].install.healthCheckExprs[].kind` | string, required | Kind of the custom resource under evaluation. |
+| `variants[].components[].install.healthCheckExprs[].apiVersion` | string, required | APIVersion of the custom resource. |
+| `variants[].components[].install.healthCheckExprs[].current` | string, required | Current is true when the resource is healthy. |
+| `variants[].components[].install.healthCheckExprs[].failed` | string | Failed is true when the resource has failed. |
+| `variants[].components[].install.healthCheckExprs[].inProgress` | string | InProgress is true while the resource is being reconciled. |
+| `variants[].components[].install.healthCheckExprs[].kind` | string, required | Kind of the custom resource. |
 | `variants[].components[].install.namespace` | string | Namespace is the Kubernetes namespace where the release will be installed |
 | `variants[].components[].install.phase` | string: PreUpgrade | Phase PreUpgrade makes the component a hook: it runs only when the package moves to another version, before every other component, with values kubepkg.fromVersion and kubepkg.toVersion, typically a Job that migrates data. A hook that fails stops the upgrade before anything else changes; it is uninstalled once the upgrade succeeds, so the next upgrade runs it afresh. |
 | `variants[].components[].install.privileged` | boolean | Privileged indicates whether this release requires privileged access |
@@ -248,7 +248,6 @@ Short names: `pks`.
 | Field | Type | Description |
 |---|---|---|
 | `conditions` | []object | Conditions represents the latest available observations of a PackageSource's state |
-| `variants` | string | Variants is a comma-separated list of package variant names This field is populated by the controller based on spec.variants keys |
 
 
 ## Repository

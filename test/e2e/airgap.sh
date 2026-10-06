@@ -104,7 +104,7 @@ helm --kube-context "${KUBE_CONTEXT}" upgrade --install kubepkg "${ROOT}/charts/
   --set 'repositories[0].name=main' --set 'repositories[0].url=http://airgap.airgap.svc:8000/main/index.yaml' \
   --set-file 'repositories[0].publicKeys[0]'="${WORK}/index.pub" >/dev/null
 ${K} apply -f - >/dev/null <<EOF
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: Repository
 metadata: {name: public}
 spec: {url: ${INDEX}, priority: -1}
@@ -119,7 +119,7 @@ echo "  public repository: ${reason}, as it should be"
 ${K} delete repositories.kubepkg.dev public >/dev/null
 
 ${K} apply -f - >/dev/null <<EOF
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: Package
 metadata: {name: ${PACKAGE}}
 spec: {}

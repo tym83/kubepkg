@@ -33,7 +33,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/controller"
 	"github.com/tym83/kubepkg/pkg/repo"
 	"github.com/tym83/kubepkg/pkg/resolve"
@@ -98,9 +98,9 @@ func Plan(ctx context.Context, c client.Client, store *repo.Store, policy repo.P
 				}
 			}
 		}
-		src := &v1alpha1.PackageSource{}
+		src := &v1beta1.PackageSource{}
 		if err := c.Get(ctx, types.NamespacedName{Name: ch.Name}, src); err == nil {
-			s.Local = src.Labels[v1alpha1.LabelRepository] == ""
+			s.Local = src.Labels[v1beta1.LabelRepository] == ""
 		} else if !apierrors.IsNotFound(err) {
 			return nil, err
 		}
@@ -150,11 +150,11 @@ func Apply(ctx context.Context, c client.Client, steps []Step) error {
 		if s.Action == resolve.ActionKeep {
 			continue
 		}
-		pkg := &v1alpha1.Package{}
+		pkg := &v1beta1.Package{}
 		err := c.Get(ctx, types.NamespacedName{Name: s.Name}, pkg)
 		switch {
 		case apierrors.IsNotFound(err):
-			pkg = &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: s.Name}, Spec: v1alpha1.PackageSpec{Version: s.Constraint}}
+			pkg = &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: s.Name}, Spec: v1beta1.PackageSpec{Version: s.Constraint}}
 			if s.Dependency {
 				pkg.Annotations = map[string]string{AnnotationDependency: s.Reason}
 			}
@@ -213,7 +213,7 @@ func WritePlan(w io.Writer, steps []Step) error {
 		if s.Action == resolve.ActionUpgrade || s.Action == resolve.ActionDowngrade {
 			for _, v := range spec.Variants {
 				for _, c := range v.Components {
-					if c.Install != nil && c.Install.Phase == v1alpha1.PhasePreUpgrade {
+					if c.Install != nil && c.Install.Phase == v1beta1.PhasePreUpgrade {
 						notes = append(notes, "runs pre-upgrade hook "+c.Name+" before anything else")
 					}
 				}
@@ -230,7 +230,7 @@ func WritePlan(w io.Writer, steps []Step) error {
 }
 
 // hasComponents is false for a meta package, which has nothing to roll back.
-func hasComponents(spec v1alpha1.PackageSourceSpec) bool {
+func hasComponents(spec v1beta1.PackageSourceSpec) bool {
 	for _, v := range spec.Variants {
 		if len(v.Components) > 0 {
 			return true

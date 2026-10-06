@@ -35,7 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/source"
 )
 
@@ -64,7 +64,7 @@ type Result struct {
 	// TreeDir holds one chart directory per built chart.
 	TreeDir string
 	// Source installs the tree once SourceRef is set by Publish.
-	Source v1alpha1.PackageSource
+	Source v1beta1.PackageSource
 }
 
 type builder struct {
@@ -105,7 +105,7 @@ func Build(ctx context.Context, dir string, opts Options) (*Result, error) {
 			return nil, fmt.Errorf("chart %s: %w", n, err)
 		}
 	}
-	src := v1alpha1.PackageSource{
+	src := v1beta1.PackageSource{
 		TypeMeta:   metav1TypeMeta(),
 		ObjectMeta: *r.Metadata.DeepCopy(),
 		Spec:       *r.Spec.Package.DeepCopy(),
@@ -122,7 +122,7 @@ func Build(ctx context.Context, dir string, opts Options) (*Result, error) {
 // does not need kubepkg to be installed. Tags are immutable: when a tag
 // already holds the same content, built perhaps with another compressor,
 // the published chart is reused; reused is true when all of them were.
-func Publish(ctx context.Context, res *Result, registry string, opts source.PushOptions) (*v1alpha1.PackageSource, bool, error) {
+func Publish(ctx context.Context, res *Result, registry string, opts source.PushOptions) (*v1beta1.PackageSource, bool, error) {
 	out := res.Source.DeepCopy()
 	if len(res.Recipe.Spec.Charts) == 0 {
 		// A meta package: only requirements, nothing to push.
@@ -136,7 +136,7 @@ func Publish(ctx context.Context, res *Result, registry string, opts source.Push
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	refs := map[string]*v1alpha1.ChartRef{}
+	refs := map[string]*v1beta1.ChartRef{}
 	reused := true
 	for _, n := range names {
 		pushed, err := source.PushChart(ctx, filepath.Join(res.TreeDir, n), repository, n, version, opts)
@@ -147,7 +147,7 @@ func Publish(ctx context.Context, res *Result, registry string, opts source.Push
 			return nil, false, fmt.Errorf("chart %s: %w", n, err)
 		}
 		reused = reused && pushed.Reused
-		refs[n] = &v1alpha1.ChartRef{Repository: repository, Name: n, Version: version, Digest: pushed.LayerDigest}
+		refs[n] = &v1beta1.ChartRef{Repository: repository, Name: n, Version: version, Digest: pushed.LayerDigest}
 	}
 	for vi := range out.Spec.Variants {
 		for ci := range out.Spec.Variants[vi].Components {
@@ -451,5 +451,5 @@ func within(root, rel string) (string, error) {
 }
 
 func metav1TypeMeta() metav1.TypeMeta {
-	return metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "PackageSource"}
+	return metav1.TypeMeta{APIVersion: v1beta1.GroupVersion.String(), Kind: "PackageSource"}
 }
