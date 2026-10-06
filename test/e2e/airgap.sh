@@ -26,6 +26,8 @@ fail() { echo "FAIL: $*"; ${K} -n kubepkg-system logs -l app.kubernetes.io/name=
 bench() { ${K} -n airgap exec airgap -c bench -- "$@"; }
 
 step "air-gap side: a registry and a web server in the cluster"
+# A fresh pod each run: an old one carries the files of the last run.
+${K} -n airgap delete pod airgap --ignore-not-found --wait --timeout 120s >/dev/null 2>&1 || true
 ${K} apply -f - >/dev/null <<'EOF'
 apiVersion: v1
 kind: Namespace
