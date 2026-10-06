@@ -77,6 +77,11 @@ type Options struct {
 	IndexFetchers repo.Fetchers
 	Policy        repo.Policy
 
+	// Mirror, an oci:// registry path, is where every chart and package
+	// tree is fetched from instead of where it was published, for
+	// air-gapped clusters; kubepkg bundle import fills it.
+	Mirror string
+
 	// NelmBinary is the nelm executable (werf backend).
 	NelmBinary string
 
@@ -126,6 +131,7 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.Backend, "backend", o.Backend, "backend: "+strings.Join(names, ", "))
 	fs.StringVar(&o.ArgoNamespace, "argo-namespace", o.ArgoNamespace, "namespace Argo CD watches for Applications (argo backend, default argocd)")
 	fs.StringVar(&o.ArgoProject, "argo-project", o.ArgoProject, "Argo CD project of the Applications (argo backend, default default)")
+	fs.StringVar(&o.Mirror, "mirror", o.Mirror, "oci:// registry path to fetch every chart and package tree from, for air-gapped clusters")
 	fs.StringVar(&o.NelmBinary, "nelm-binary", o.NelmBinary, "nelm executable (werf backend)")
 	fs.StringVar(&o.CacheDir, "cache-dir", o.CacheDir, "where package trees and charts are kept (helm backend)")
 	fs.StringVar(&o.RegistryConfig, "registry-config", o.RegistryConfig, "Docker config file with registry credentials")
@@ -146,7 +152,7 @@ func HelmBackend(env Env) (backend.Backend, controller.Preparer, error) {
 		return nil, nil, err
 	}
 	return b, &controller.OCIPreparer{
-		Fetcher: &source.Fetcher{CacheDir: o.CacheDir, PlainHTTP: o.PlainHTTP, CredentialsFile: o.RegistryConfig},
+		Fetcher: &source.Fetcher{CacheDir: o.CacheDir, PlainHTTP: o.PlainHTTP, CredentialsFile: o.RegistryConfig, Mirror: o.Mirror},
 		WorkDir: filepath.Join(o.CacheDir, "composed"),
 	}, nil
 }
@@ -154,7 +160,7 @@ func HelmBackend(env Env) (backend.Backend, controller.Preparer, error) {
 // FluxBackend installs through Flux: an OCIRepository or HelmRepository
 // and a HelmRelease per component.
 func FluxBackend(env Env) (backend.Backend, controller.Preparer, error) {
-	return &flux.Backend{Client: env.Client, Insecure: env.Options.PlainHTTP}, controller.ChartPreparer{}, nil
+	return &flux.Backend{Client: env.Client, Insecure: env.Options.PlainHTTP}, controller.ChartPreparer{Mirror: env.Options.Mirror}, nil
 }
 
 // WerfBackend installs through Nelm, werf's deployment engine, with charts
@@ -170,7 +176,7 @@ func WerfBackend(env Env) (backend.Backend, controller.Preparer, error) {
 		return nil, nil, err
 	}
 	return b, &controller.OCIPreparer{
-		Fetcher: &source.Fetcher{CacheDir: o.CacheDir, PlainHTTP: o.PlainHTTP, CredentialsFile: o.RegistryConfig},
+		Fetcher: &source.Fetcher{CacheDir: o.CacheDir, PlainHTTP: o.PlainHTTP, CredentialsFile: o.RegistryConfig, Mirror: o.Mirror},
 		WorkDir: filepath.Join(o.CacheDir, "composed"),
 	}, nil
 }
@@ -181,7 +187,7 @@ func ArgoBackend(env Env) (backend.Backend, controller.Preparer, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return &argo.Backend{Client: env.Client, Secrets: secrets, Namespace: env.Options.ArgoNamespace, Project: env.Options.ArgoProject}, controller.ChartPreparer{}, nil
+	return &argo.Backend{Client: env.Client, Secrets: secrets, Namespace: env.Options.ArgoNamespace, Project: env.Options.ArgoProject}, controller.ChartPreparer{Mirror: env.Options.Mirror}, nil
 }
 
 // Run starts the operator and blocks until ctx is done.

@@ -40,6 +40,9 @@ spec:
             - --argo-namespace={{ .Values.argo.namespace }}
             - --argo-project={{ .Values.argo.project }}
             {{- end }}
+            {{- with .Values.mirror }}
+            - --mirror={{ . }}
+            {{- end }}
             {{- if .Values.plainHTTP }}
             - --plain-http
             {{- end }}

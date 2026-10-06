@@ -75,6 +75,7 @@ func (f *Fetcher) FetchChart(ctx context.Context, c Chart) (dir, digest string, 
 		}
 	}
 
+	c = MirrorChart(f.Mirror, c)
 	var archive []byte
 	switch {
 	case strings.HasPrefix(c.Repository, "oci://"):

@@ -64,6 +64,10 @@ type Fetcher struct {
 	// CredentialsFile is a Docker config with registry credentials; empty
 	// means anonymous access.
 	CredentialsFile string
+	// Mirror, an oci:// registry path, is where every chart and package
+	// tree is fetched from instead of where it was published; see
+	// MirrorPath. Digests are verified as usual.
+	Mirror string
 
 	mu sync.Mutex
 }
@@ -72,10 +76,14 @@ type Fetcher struct {
 // unpacked into and the manifest digest. Unpacked trees are immutable and
 // keyed by digest, so a tag that moves produces a new directory.
 func (f *Fetcher) Fetch(ctx context.Context, ref string) (dir, digest string, err error) {
-	target := strings.TrimPrefix(ref, "oci://")
-	if target == ref {
+	if !strings.HasPrefix(ref, "oci://") {
 		return "", "", fmt.Errorf("source %q is not an oci:// reference", ref)
 	}
+	ref, err = MirrorRef(f.Mirror, ref)
+	if err != nil {
+		return "", "", err
+	}
+	target := strings.TrimPrefix(ref, "oci://")
 	repo, err := f.repository(target)
 	if err != nil {
 		return "", "", fmt.Errorf("%s: %w", ref, err)

@@ -28,6 +28,11 @@ argo:
   namespace: argocd
   project: default
 
+# Air-gapped clusters: an oci:// registry path that holds copies of every
+# chart and package tree, made by kubepkg bundle import. The operator then
+# fetches only from there; digests are verified as usual.
+mirror: ""
+
 # Let the operator pull from registries over plain HTTP (test registries only).
 plainHTTP: false
 

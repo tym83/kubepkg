@@ -111,15 +111,22 @@ func libraryPaths(v *v1alpha1.Variant) map[string]string {
 // another tool (flux, argo). Such tools fetch charts themselves, so only
 // components with chart can be installed this way; built packages are
 // made of published charts.
-type ChartPreparer struct{}
+type ChartPreparer struct {
+	// Mirror, when set, is the registry the tool fetches every chart from
+	// (see source.MirrorPath).
+	Mirror string
+}
 
 // Prepare implements Preparer.
-func (ChartPreparer) Prepare(_ context.Context, src *v1alpha1.PackageSource, _ *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
+func (p ChartPreparer) Prepare(_ context.Context, src *v1alpha1.PackageSource, _ *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
 	ch := comp.Chart
 	if ch == nil {
 		return "", fmt.Errorf("component %s: this backend installs published charts; build the package or use chart instead of path", comp.Name)
 	}
-	c.Chart = &backend.Chart{Repository: ch.Repository, Name: ch.Name, Version: ch.Version, Digest: ch.Digest}
+	// The digest below stays that of the published location, so turning a
+	// mirror on does not make new revisions.
+	m := source.MirrorChart(p.Mirror, source.Chart{Repository: ch.Repository, Name: ch.Name, Version: ch.Version, Digest: ch.Digest})
+	c.Chart = &backend.Chart{Repository: m.Repository, Name: ch.Name, Version: ch.Version, Digest: ch.Digest}
 	if ch.Digest != "" {
 		return ch.Digest, nil
 	}
