@@ -182,6 +182,8 @@ type Backend interface {
 }
 ```
 
+A component can declare `readyWhen`: object conditions that must hold before it counts as ready, for resources whose readiness Helm cannot see, such as an operator's custom resource reporting `Available`. A release that installed but never meets them within the upgrade timeout fails the revision like any other failure.
+
 Every backend gets a package's components one at a time in dependency order: the operator applies the next one only once the one before it is ready, so ordering never depends on the delivery tool supporting it. Synchronous backends report readiness from `Apply`; asynchronous ones are re-checked until they settle.
 
 - **helm** installs charts with the Helm SDK inside the operator. Sources: published charts (HTTP repositories and OCI registries) and `OCIArtifact` package trees. Rollback uses Helm release history. No other controllers are needed.

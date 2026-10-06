@@ -297,11 +297,28 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1alpha1.Package,
 			logger.Info("component failed", "package", pkg.Name, "component", c.snapshot.Name, "revision", rev.Spec.Revision, "message", msg)
 			return r.fail(ctx, pkg, rev, d, applied, revs, fmt.Sprintf("component %s failed: %s", c.snapshot.Name, msg))
 		}
+		waiting := ""
 		if !s.Ready {
+			waiting = c.snapshot.Name
+		} else if len(c.readyWhen) > 0 {
+			why, err := r.readyWhenMet(ctx, c.readyWhen, c.backend.Namespace)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			if why != "" {
+				waiting = c.snapshot.Name + ": " + why
+				// The release is in, but what it runs never got ready:
+				// past the timeout that is a failed revision.
+				if t := c.backend.Timeout; t > 0 && !rev.CreationTimestamp.IsZero() && time.Since(rev.CreationTimestamp.Time) > t {
+					return r.fail(ctx, pkg, rev, d, applied, revs, fmt.Sprintf("component %s not ready after %s: %s", c.snapshot.Name, t, why))
+				}
+			}
+		}
+		if waiting != "" {
 			if err := r.Status().Update(ctx, rev); err != nil {
 				return ctrl.Result{}, err
 			}
-			setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonProgressing, fmt.Sprintf("applying revision %d: waiting for %s", rev.Spec.Revision, c.snapshot.Name))
+			setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonProgressing, fmt.Sprintf("applying revision %d: waiting for %s", rev.Spec.Revision, waiting))
 			return ctrl.Result{RequeueAfter: progressRequeue}, nil
 		}
 	}

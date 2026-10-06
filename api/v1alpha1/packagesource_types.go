@@ -258,6 +258,34 @@ type ComponentInstall struct {
 	// resource is actually healthy.
 	// +optional
 	HealthCheckExprs []kustomize.CustomHealthCheck `json:"healthCheckExprs,omitempty"`
+
+	// ReadyWhen lists object conditions that must hold before the
+	// component counts as ready, for resources whose own readiness Helm
+	// cannot see, such as an operator's custom resource reporting
+	// Available. Every backend honours it; not meeting it within the
+	// upgrade timeout fails the revision.
+	// +optional
+	ReadyWhen []ReadyCondition `json:"readyWhen,omitempty"`
+}
+
+// ReadyCondition is a condition an object must report.
+type ReadyCondition struct {
+	// +required
+	APIVersion string `json:"apiVersion"`
+	// +required
+	Kind string `json:"kind"`
+	// +required
+	Name string `json:"name"`
+	// Namespace defaults to the component's install namespace and is
+	// ignored for cluster-scoped kinds.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+	// Condition is the type in status.conditions, e.g. Available.
+	// +required
+	Condition string `json:"condition"`
+	// Status is the wanted status of the condition. Default "True".
+	// +optional
+	Status string `json:"status,omitempty"`
 }
 
 // ChartRef points at one version of a published Helm chart.

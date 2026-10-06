@@ -25,8 +25,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -133,7 +136,19 @@ func newEnv(t *testing.T) *env {
 	if err := corev1.AddToScheme(sch); err != nil {
 		t.Fatal(err)
 	}
-	c := fake.NewClientBuilder().WithScheme(sch).
+	// Kinds the tests treat as an operator's custom resources, next to the
+	// scheme's own with their real scopes.
+	custom := meta.NewDefaultRESTMapper(nil)
+	custom.Add(schema.GroupVersionKind{Group: "example.org", Version: "v1", Kind: "Widget"}, meta.RESTScopeNamespace)
+	custom.Add(schema.GroupVersionKind{Group: "example.org", Version: "v1", Kind: "Fleet"}, meta.RESTScopeRoot)
+	ours := meta.NewDefaultRESTMapper(nil)
+	for gvk := range sch.AllKnownTypes() {
+		if gvk.Group == v1alpha1.GroupName {
+			ours.Add(gvk, meta.RESTScopeRoot)
+		}
+	}
+	mapper := meta.MultiRESTMapper{testrestmapper.TestOnlyStaticRESTMapper(sch), ours, custom}
+	c := fake.NewClientBuilder().WithScheme(sch).WithRESTMapper(mapper).
 		WithStatusSubresource(&v1alpha1.Package{}, &v1alpha1.PackageRevision{}, &v1alpha1.PackageSource{}, &v1alpha1.Repository{}).
 		Build()
 	be := newFakeBackend()
@@ -514,5 +529,79 @@ func TestAsyncComponentsGoInDependencyOrder(t *testing.T) {
 	e.reconcile("virt")
 	if ok, r, msg := ready(e.pkg("virt")); !ok {
 		t.Fatalf("not ready once both components are: %s %s", r, msg)
+	}
+}
+
+func widget(ns, name, available string) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{}
+	u.SetAPIVersion("example.org/v1")
+	u.SetKind("Widget")
+	u.SetNamespace(ns)
+	u.SetName(name)
+	if available != "" {
+		_ = unstructured.SetNestedSlice(u.Object, []any{map[string]any{"type": "Available", "status": available}}, "status", "conditions")
+	}
+	return u
+}
+
+func TestReadyWhenWaitsForTheResourcesCondition(t *testing.T) {
+	e := newEnv(t)
+	src := mkSource("virt", "1.0.0", true, "operator")
+	src.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1alpha1.ReadyCondition{{APIVersion: "example.org/v1", Kind: "Widget", Name: "main", Condition: "Available"}}
+	e.create(src, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "virt"}})
+
+	e.reconcile("virt")
+	e.reconcile("virt")
+	if ok, r, msg := ready(e.pkg("virt")); ok || r != v1alpha1.ReasonProgressing || !strings.Contains(msg, "not created yet") {
+		t.Fatalf("before the resource exists: %v %s %q", ok, r, msg)
+	}
+
+	w := widget("ns-virt", "main", "False")
+	if err := e.c.Create(context.Background(), w); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("virt")
+	if ok, _, msg := ready(e.pkg("virt")); ok || !strings.Contains(msg, "Widget main condition Available=True") {
+		t.Fatalf("while the condition is False: %v %q", ok, msg)
+	}
+
+	_ = unstructured.SetNestedSlice(w.Object, []any{map[string]any{"type": "Available", "status": "True"}}, "status", "conditions")
+	if err := e.c.Update(context.Background(), w); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("virt")
+	if ok, r, msg := ready(e.pkg("virt")); !ok {
+		t.Fatalf("once Available: %s %q", r, msg)
+	}
+}
+
+func TestReadyWhenClusterScopedAndUnservedKinds(t *testing.T) {
+	e := newEnv(t)
+	src := mkSource("fleet", "1.0.0", true, "operator")
+	src.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1alpha1.ReadyCondition{
+		{APIVersion: "example.org/v1", Kind: "Fleet", Name: "main", Condition: "Ready"},
+	}
+	e.create(src, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "fleet"}})
+	f := &unstructured.Unstructured{}
+	f.SetAPIVersion("example.org/v1")
+	f.SetKind("Fleet")
+	f.SetName("main")
+	_ = unstructured.SetNestedSlice(f.Object, []any{map[string]any{"type": "Ready", "status": "True"}}, "status", "conditions")
+	if err := e.c.Create(context.Background(), f); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("fleet")
+	e.reconcile("fleet")
+	if ok, r, msg := ready(e.pkg("fleet")); !ok {
+		t.Fatalf("a cluster-scoped resource must be found without a namespace: %s %q", r, msg)
+	}
+
+	src2 := mkSource("later", "1.0.0", true, "operator")
+	src2.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1alpha1.ReadyCondition{{APIVersion: "nothing.example.org/v1", Kind: "Ghost", Name: "x", Condition: "Ready"}}
+	e.create(src2, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "later"}})
+	e.reconcile("later")
+	e.reconcile("later")
+	if ok, _, msg := ready(e.pkg("later")); ok || !strings.Contains(msg, "not served yet") {
+		t.Fatalf("a kind whose CRD is not installed yet: %v %q", ok, msg)
 	}
 }

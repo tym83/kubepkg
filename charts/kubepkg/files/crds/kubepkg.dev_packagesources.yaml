@@ -303,6 +303,43 @@ spec:
                                 description: Privileged indicates whether this release
                                   requires privileged access
                                 type: boolean
+                              readyWhen:
+                                description: |-
+                                  ReadyWhen lists object conditions that must hold before the
+                                  component counts as ready, for resources whose own readiness Helm
+                                  cannot see, such as an operator's custom resource reporting
+                                  Available. Every backend honours it; not meeting it within the
+                                  upgrade timeout fails the revision.
+                                items:
+                                  description: ReadyCondition is a condition an object
+                                    must report.
+                                  properties:
+                                    apiVersion:
+                                      type: string
+                                    condition:
+                                      description: Condition is the type in status.conditions,
+                                        e.g. Available.
+                                      type: string
+                                    kind:
+                                      type: string
+                                    name:
+                                      type: string
+                                    namespace:
+                                      description: |-
+                                        Namespace defaults to the component's install namespace and is
+                                        ignored for cluster-scoped kinds.
+                                      type: string
+                                    status:
+                                      description: Status is the wanted status of
+                                        the condition. Default "True".
+                                      type: string
+                                  required:
+                                  - apiVersion
+                                  - condition
+                                  - kind
+                                  - name
+                                  type: object
+                                type: array
                               releaseName:
                                 description: |-
                                   ReleaseName is the name of the HelmRelease resource that will be created

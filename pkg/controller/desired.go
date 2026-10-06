@@ -140,8 +140,9 @@ type desiredState struct {
 }
 
 type desiredComponent struct {
-	snapshot v1alpha1.ComponentSnapshot
-	backend  backend.Component
+	snapshot  v1alpha1.ComponentSnapshot
+	backend   backend.Component
+	readyWhen []v1alpha1.ReadyCondition
 }
 
 func digestOf(v any) (string, error) {
@@ -291,7 +292,8 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 				ChartDigest:  chartDigest,
 				ValuesDigest: valuesDigest,
 			},
-			backend: bc,
+			backend:   bc,
+			readyWhen: c.Install.ReadyWhen,
 		})
 	}
 	return d, nil
