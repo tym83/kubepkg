@@ -367,6 +367,14 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1alpha1.Package,
 			return ctrl.Result{}, err
 		}
 	}
+	if _, ok := pkg.Annotations[AnnotationAdopt]; ok {
+		// Taking over was for this revision only.
+		patch := client.MergeFrom(pkg.DeepCopy())
+		delete(pkg.Annotations, AnnotationAdopt)
+		if err := r.Patch(ctx, pkg, patch); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 	if err := r.prune(ctx, pkg, revs); err != nil {
 		return ctrl.Result{}, err
 	}

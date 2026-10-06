@@ -44,6 +44,12 @@ const (
 	// AnnotationRollbackRequested marks a revision restored because someone
 	// asked for it, not because an upgrade failed.
 	AnnotationRollbackRequested = "kubepkg.dev/rollback-requested"
+	// AnnotationAdopt on a Package takes over what its components would
+	// create but was installed another way: Helm releases of the same
+	// name, and objects applied without Helm. It is removed once a
+	// revision has been applied, so later changes never take over
+	// unrelated objects.
+	AnnotationAdopt = "kubepkg.dev/adopt"
 	// AnnotationRetry changes the desired state without changing the spec,
 	// so a failed revision is attempted again.
 	AnnotationRetry = "kubepkg.dev/retry"

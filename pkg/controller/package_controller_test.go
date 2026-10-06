@@ -49,6 +49,7 @@ type fakeBackend struct {
 	failOn   map[string]bool          // component name -> fail on next apply
 	calls    []string
 	values   map[string]map[string]any // key -> values of the last apply
+	adopted  []string                  // keys applied with Adopt
 }
 
 type fakeRelease struct {
@@ -74,6 +75,9 @@ func (f *fakeBackend) state(key string) backend.State {
 func (f *fakeBackend) Apply(_ context.Context, c backend.Component) (backend.State, error) {
 	f.calls = append(f.calls, "apply "+c.Key()+" "+c.ChartDir)
 	f.values[c.Key()] = c.Values
+	if c.Adopt {
+		f.adopted = append(f.adopted, c.Key())
+	}
 	failed := f.failOn[c.Name]
 	f.releases[c.Key()] = append(f.releases[c.Key()], fakeRelease{chart: c.ChartDir, failed: failed})
 	st := f.state(c.Key())
@@ -758,4 +762,33 @@ func (e *env) revisionsOf(name string) []v1alpha1.PackageRevision {
 		e.t.Fatal(err)
 	}
 	return revs
+}
+
+func TestAdoptTakesOverOnceInTheReleaseItNames(t *testing.T) {
+	e := newEnv(t)
+	pkg := &v1alpha1.Package{
+		ObjectMeta: metav1.ObjectMeta{Name: "app", Annotations: map[string]string{AnnotationAdopt: "true"}},
+		Spec: v1alpha1.PackageSpec{Components: map[string]v1alpha1.PackageComponent{
+			"web": {ReleaseName: "legacy-web", Namespace: "legacy"},
+		}},
+	}
+	e.create(mkSource("app", "1.0.0", true, "db", "web"), pkg)
+	e.reconcile("app")
+	e.reconcile("app")
+	if e.be.chartOf("legacy/legacy-web") != "web@1.0.0" || e.be.chartOf("ns-app/db") != "db@1.0.0" {
+		t.Fatalf("releases: %v", e.be.calls)
+	}
+	if len(e.be.adopted) != 2 {
+		t.Fatalf("adopted: %v", e.be.adopted)
+	}
+	if _, ok := e.pkg("app").Annotations[AnnotationAdopt]; ok {
+		t.Fatal("the adopt annotation stays after the revision was applied")
+	}
+	// Later changes never take over anything.
+	e.setVersion("app", "1.1.0", true)
+	e.reconcile("app")
+	e.reconcile("app")
+	if len(e.be.adopted) != 2 || e.be.chartOf("legacy/legacy-web") != "web@1.1.0" {
+		t.Fatalf("after an upgrade: adopted %v, calls %v", e.be.adopted, e.be.calls)
+	}
 }

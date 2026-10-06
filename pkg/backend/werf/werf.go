@@ -130,6 +130,9 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 	// The package decides about rollbacks for all its components together.
 	args = append(args, "--values", vf.Name(), "--timeout", timeout.String(), "--auto-rollback=false",
 		"--no-show-progress", "--no-pod-logs", "--release-history-limit", strconv.Itoa(b.HistoryLimit))
+	if c.Adopt {
+		args = append(args, "--force-adoption")
+	}
 	for _, k := range sortedKeys(c.Labels) {
 		args = append(args, "--release-labels", k+"="+c.Labels[k])
 	}
