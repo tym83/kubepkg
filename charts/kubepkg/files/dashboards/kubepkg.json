@@ -34,7 +34,7 @@
       },
       "targets": [
         {
-          "expr": "count(kubepkg_package_ready)",
+          "expr": "count(max by (package) (kubepkg_package_ready))",
           "refId": "A"
         }
       ],
@@ -67,7 +67,7 @@
       },
       "targets": [
         {
-          "expr": "sum(kubepkg_package_ready)",
+          "expr": "sum(max by (package) (kubepkg_package_ready))",
           "refId": "A"
         }
       ],
@@ -100,7 +100,7 @@
       },
       "targets": [
         {
-          "expr": "count(kubepkg_package_ready == 0) or vector(0)",
+          "expr": "count(max by (package) (kubepkg_package_ready) == 0) or vector(0)",
           "refId": "A"
         }
       ],
@@ -133,7 +133,7 @@
       },
       "targets": [
         {
-          "expr": "sum(kubepkg_repository_ready)",
+          "expr": "sum(max by (repository) (kubepkg_repository_ready))",
           "refId": "A"
         }
       ],
@@ -166,7 +166,7 @@
       },
       "targets": [
         {
-          "expr": "kubepkg_package_info * on(package) group_left kubepkg_package_ready",
+          "expr": "max by (package, version, revision) (kubepkg_package_info) * on(package) group_left max by (package) (kubepkg_package_ready)",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -232,7 +232,7 @@
       },
       "targets": [
         {
-          "expr": "time() - kubepkg_repository_index_generated_timestamp_seconds",
+          "expr": "time() - max by (repository) (kubepkg_repository_index_generated_timestamp_seconds)",
           "legendFormat": "{{repository}}",
           "refId": "A"
         }
