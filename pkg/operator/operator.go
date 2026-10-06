@@ -211,6 +211,15 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 	if err := (&controller.RepositoryReconciler{Client: mgr.GetClient(), Repositories: repos}).SetupWithManager(mgr); err != nil {
 		return err
 	}
+	// Hub: Clusters and PackageSets. Kubeconfig Secrets are read straight
+	// from the API server, so the operator does not cache every Secret.
+	members := &controller.KubeconfigClients{Hub: mgr.GetAPIReader(), Group: o.Profile.Group}
+	if err := (&controller.ClusterReconciler{Client: mgr.GetClient(), Members: members}).SetupWithManager(mgr); err != nil {
+		return err
+	}
+	if err := (&controller.PackageSetReconciler{Client: mgr.GetClient(), Members: members}).SetupWithManager(mgr); err != nil {
+		return err
+	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		return err
 	}

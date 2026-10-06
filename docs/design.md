@@ -6,7 +6,7 @@ This document specifies the v0.1 API and the behaviour of the operator and the C
 
 In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, a plan before changes, three backends (Helm, Flux and Argo CD), and settings that let a platform embed kubepkg without changing its code.
 
-Out of scope, on the roadmap: delegated roles for parts of a repository (TUF targets delegation).
+Out of scope, on the roadmap: delegated roles for parts of a repository (TUF targets delegation), staged rollouts across clusters.
 
 ## Resources
 
@@ -358,6 +358,32 @@ The operator keeps every index loaded. A `Package` with no hand-written `Package
 - Requirements are not installed automatically: a package whose requirements are missing reports `RequirementsNotMet`. Installing a package together with what it needs is the CLI's job, so the cluster state stays explicit.
 
 A distribution adds index transports by URL scheme (`http` and `https` are built in) and a policy that admits indexes and versions — signature checks, allowed registries — through `operator.Options`.
+
+## Several clusters
+
+A hub installs packages into member clusters, each of which runs kubepkg itself and keeps its own revisions and rollbacks. The hub knows its members as `Cluster` resources, which point at a kubeconfig in a Secret and carry labels, and says what goes where with `PackageSet`s:
+
+```bash
+kubepkg cluster add edge-1 --kubeconfig edge-1.kubeconfig --label env=prod --label region=eu
+```
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: PackageSet
+metadata:
+  name: base
+spec:
+  clusterSelector: {matchLabels: {env: prod}}
+  repositories:
+    - name: main
+      spec: {url: https://packages.example.org/index.yaml, publicKeys: ["..."]}
+  packages:
+    - name: cert-manager
+      spec: {version: "~1.21"}
+    - name: virtualization
+```
+
+The hub writes the repositories and packages to every selected cluster, labelled `kubepkg.dev/package-set`, and never touches objects it did not create: a Package of the same name made by hand is reported as a conflict and left alone. Dropping a package from the set removes it from the clusters; a cluster that stops matching the selector loses what the set wrote there; deleting the set removes everything it wrote, and waits for unreachable clusters rather than leave packages behind. The set's status counts ready packages per cluster (`kubepkg set list`), and each Cluster reports whether the hub reaches it and whether it runs kubepkg (`kubepkg cluster list`).
 
 ## Observability
 

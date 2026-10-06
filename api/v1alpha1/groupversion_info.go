@@ -48,6 +48,8 @@ func AddToSchemeForGroup(group string) func(*runtime.Scheme) error {
 			&PackageSource{}, &PackageSourceList{},
 			&PackageRevision{}, &PackageRevisionList{},
 			&Repository{}, &RepositoryList{},
+			&Cluster{}, &ClusterList{},
+			&PackageSet{}, &PackageSetList{},
 		)
 		metav1AddToGroupVersion(s, gv)
 		return nil
