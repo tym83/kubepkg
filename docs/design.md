@@ -184,6 +184,8 @@ type Backend interface {
 
 A component can declare `readyWhen`: object conditions that must hold before it counts as ready, for resources whose readiness Helm cannot see, such as an operator's custom resource reporting `Available`. A release that installed but never meets them within the upgrade timeout fails the revision like any other failure.
 
+A component with `install.phase: PreUpgrade` is a hook, typically a chart with a Job that migrates data. It runs only when a revision moves the package to another version, before every other component, with the values `kubepkg.fromVersion` and `kubepkg.toVersion`. A hook that fails stops the upgrade before anything else changes; once the upgrade succeeds its release is removed, so the next upgrade runs it afresh. Hooks are not part of a revision's snapshot, and no other component may depend on one. `kubepkg plan` lists the hooks an upgrade runs.
+
 Every backend gets a package's components one at a time in dependency order: the operator applies the next one only once the one before it is ready, so ordering never depends on the delivery tool supporting it. Synchronous backends report readiness from `Apply`; asynchronous ones are re-checked until they settle.
 
 - **helm** installs charts with the Helm SDK inside the operator. Sources: published charts (HTTP repositories and OCI registries) and `OCIArtifact` package trees. Rollback uses Helm release history. No other controllers are needed.

@@ -259,6 +259,16 @@ type ComponentInstall struct {
 	// +optional
 	HealthCheckExprs []kustomize.CustomHealthCheck `json:"healthCheckExprs,omitempty"`
 
+	// Phase PreUpgrade makes the component a hook: it runs only when the
+	// package moves to another version, before every other component,
+	// with values kubepkg.fromVersion and kubepkg.toVersion, typically a
+	// Job that migrates data. A hook that fails stops the upgrade before
+	// anything else changes; it is uninstalled once the upgrade succeeds,
+	// so the next upgrade runs it afresh.
+	// +optional
+	// +kubebuilder:validation:Enum=PreUpgrade
+	Phase string `json:"phase,omitempty"`
+
 	// ReadyWhen lists object conditions that must hold before the
 	// component counts as ready, for resources whose own readiness Helm
 	// cannot see, such as an operator's custom resource reporting
@@ -267,6 +277,9 @@ type ComponentInstall struct {
 	// +optional
 	ReadyWhen []ReadyCondition `json:"readyWhen,omitempty"`
 }
+
+// PhasePreUpgrade marks a component as a pre-upgrade hook.
+const PhasePreUpgrade = "PreUpgrade"
 
 // ReadyCondition is a condition an object must report.
 type ReadyCondition struct {

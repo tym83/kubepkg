@@ -299,6 +299,17 @@ spec:
                                 description: Namespace is the Kubernetes namespace
                                   where the release will be installed
                                 type: string
+                              phase:
+                                description: |-
+                                  Phase PreUpgrade makes the component a hook: it runs only when the
+                                  package moves to another version, before every other component,
+                                  with values kubepkg.fromVersion and kubepkg.toVersion, typically a
+                                  Job that migrates data. A hook that fails stops the upgrade before
+                                  anything else changes; it is uninstalled once the upgrade succeeds,
+                                  so the next upgrade runs it afresh.
+                                enum:
+                                - PreUpgrade
+                                type: string
                               privileged:
                                 description: Privileged indicates whether this release
                                   requires privileged access

@@ -285,6 +285,9 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1alpha1.Package,
 	// returns ready from Apply; an asynchronous one (flux, argo) is
 	// re-checked on the next round, so ordering does not depend on the
 	// delivery tool supporting it.
+	if res, done, err := r.runHooks(ctx, pkg, rev, d, revs); done {
+		return res, err
+	}
 	var applied []desiredComponent
 	for _, c := range d.components {
 		s, err := r.Backend.Apply(ctx, c.backend)
@@ -333,6 +336,9 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1alpha1.Package,
 		return ctrl.Result{}, err
 	}
 	countRevision(pkg.Name, outcomeApplied)
+	if rev.Annotations[AnnotationHooksDone] == "true" {
+		r.uninstallHooks(ctx, d)
+	}
 	for i := range *revs {
 		o := &(*revs)[i]
 		if o.Spec.Revision < rev.Spec.Revision && o.Status.Phase == v1alpha1.PhaseApplied {

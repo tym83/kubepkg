@@ -53,6 +53,9 @@ const (
 	// AnnotationValuesFiles on a release lists the values files it was
 	// rendered with.
 	AnnotationValuesFiles = "kubepkg.dev/values-files"
+	// AnnotationHooksDone on a revision records that its pre-upgrade hooks
+	// succeeded, so later passes do not run them again.
+	AnnotationHooksDone = "kubepkg.dev/hooks-done"
 	// FinalizerCleanup removes releases before the Package goes away.
 	FinalizerCleanup = "kubepkg.dev/cleanup"
 )

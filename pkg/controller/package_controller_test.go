@@ -23,8 +23,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,6 +48,7 @@ type fakeBackend struct {
 	releases map[string][]fakeRelease // key -> history, newest last
 	failOn   map[string]bool          // component name -> fail on next apply
 	calls    []string
+	values   map[string]map[string]any // key -> values of the last apply
 }
 
 type fakeRelease struct {
@@ -54,7 +57,7 @@ type fakeRelease struct {
 }
 
 func newFakeBackend() *fakeBackend {
-	return &fakeBackend{releases: map[string][]fakeRelease{}, failOn: map[string]bool{}}
+	return &fakeBackend{releases: map[string][]fakeRelease{}, failOn: map[string]bool{}, values: map[string]map[string]any{}}
 }
 
 func (f *fakeBackend) Name() string { return "fake" }
@@ -70,6 +73,7 @@ func (f *fakeBackend) state(key string) backend.State {
 
 func (f *fakeBackend) Apply(_ context.Context, c backend.Component) (backend.State, error) {
 	f.calls = append(f.calls, "apply "+c.Key()+" "+c.ChartDir)
+	f.values[c.Key()] = c.Values
 	failed := f.failOn[c.Name]
 	f.releases[c.Key()] = append(f.releases[c.Key()], fakeRelease{chart: c.ChartDir, failed: failed})
 	st := f.state(c.Key())
@@ -634,7 +638,121 @@ func TestMetricsFollowRevisions(t *testing.T) {
 	}
 
 	forgetPackage("metered")
-	if n := testutil.CollectAndCount(revisionsTotal, "kubepkg_revisions_total"); n != 0 {
-		t.Errorf("series of a removed package stay: %d", n)
+	// Nothing left to delete means forgetting took every series of it.
+	if n := revisionsTotal.DeletePartialMatch(prometheus.Labels{"package": "metered"}); n != 0 {
+		t.Errorf("revision series of a removed package stay: %d", n)
 	}
+	if n := packageInfo.DeletePartialMatch(prometheus.Labels{"package": "metered"}); n != 0 {
+		t.Errorf("info series of a removed package stay: %d", n)
+	}
+}
+
+func hookedSource(version string) *v1alpha1.PackageSource {
+	src := mkSource("db", version, false, "migrate", "server")
+	src.Spec.Variants[0].Components[0].Install.Phase = v1alpha1.PhasePreUpgrade
+	return src
+}
+
+func callsMatching(calls []string, sub string) []int {
+	var out []int
+	for i, c := range calls {
+		if strings.Contains(c, sub) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+func TestPreUpgradeHookRunsFirstOnlyOnUpgrades(t *testing.T) {
+	e := newEnv(t)
+	e.create(hookedSource("1.0.0"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
+	e.reconcile("db")
+	if ok, r, msg := ready(e.pkg("db")); !ok {
+		t.Fatalf("install: %s %q", r, msg)
+	}
+	if n := callsMatching(e.be.calls, "/migrate"); len(n) != 0 {
+		t.Fatalf("the hook ran on install: %v", e.be.calls)
+	}
+
+	e.be.calls = nil
+	e.setVersion("db", "2.0.0", false)
+	e.reconcile("db")
+	if ok, r, msg := ready(e.pkg("db")); !ok {
+		t.Fatalf("upgrade: %s %q", r, msg)
+	}
+	hook, server, gone := callsMatching(e.be.calls, "apply ns-db/migrate"), callsMatching(e.be.calls, "apply ns-db/server"), callsMatching(e.be.calls, "uninstall ns-db/migrate")
+	if len(hook) != 1 || len(server) != 1 || len(gone) != 1 || !(hook[0] < server[0] && server[0] < gone[0]) {
+		t.Fatalf("want hook, then server, then the hook removed: %v", e.be.calls)
+	}
+	kp, _ := e.be.values["ns-db/migrate"]["kubepkg"].(map[string]any)
+	if kp["fromVersion"] != "1.0.0" || kp["toVersion"] != "2.0.0" {
+		t.Fatalf("hook values: %v", e.be.values["ns-db/migrate"])
+	}
+	if e.be.chartOf("ns-db/migrate") != "" {
+		t.Fatal("the hook release stays after the upgrade")
+	}
+	for _, rev := range e.revisionsOf("db") {
+		for _, c := range rev.Spec.Components {
+			if c.Name == "migrate" {
+				t.Fatal("a hook must not be part of a revision snapshot")
+			}
+		}
+	}
+
+	// A change within the version does not run it.
+	e.be.calls = nil
+	pkg := e.pkg("db")
+	pkg.Spec.Components = map[string]v1alpha1.PackageComponent{"server": {Values: &apiextensionsv1.JSON{Raw: []byte(`{"replicas":3}`)}}}
+	if err := e.c.Update(context.Background(), pkg); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("db")
+	if n := callsMatching(e.be.calls, "/migrate"); len(n) != 0 {
+		t.Fatalf("the hook ran without a version change: %v", e.be.calls)
+	}
+}
+
+func TestFailedHookStopsTheUpgrade(t *testing.T) {
+	e := newEnv(t)
+	e.create(hookedSource("1.0.0"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
+	e.reconcile("db")
+	e.setVersion("db", "2.0.0", false)
+	e.be.failOn["migrate"] = true
+	e.reconcile("db")
+	if got := e.be.chartOf("ns-db/server"); got != "server@1.0.0" {
+		t.Fatalf("server changed although the migration failed: %s", got)
+	}
+	if e.be.chartOf("ns-db/migrate") != "" {
+		t.Fatal("a failed hook release stays")
+	}
+	if ok, _, msg := ready(e.pkg("db")); ok || !strings.Contains(msg, "pre-upgrade hook migrate failed") {
+		t.Fatalf("status: %v %q", ok, msg)
+	}
+}
+
+func TestDependingOnAHookIsRefused(t *testing.T) {
+	e := newEnv(t)
+	src := hookedSource("1.0.0")
+	src.Spec.Variants[0].Components[1].Install.DependsOn = []string{"migrate"}
+	e.create(src, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
+	res, err := e.r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "db"}})
+	_ = res
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	} else {
+		_, _, msg = ready(e.pkg("db"))
+	}
+	if !strings.Contains(msg, "pre-upgrade hook") {
+		t.Fatalf("got %q", msg)
+	}
+}
+
+func (e *env) revisionsOf(name string) []v1alpha1.PackageRevision {
+	e.t.Helper()
+	revs, err := e.r.revisions(context.Background(), name)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return revs
 }

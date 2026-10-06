@@ -210,6 +210,15 @@ func WritePlan(w io.Writer, steps []Step) error {
 		if s.Action == resolve.ActionDowngrade {
 			notes = append(notes, "DOWNGRADE from "+s.From)
 		}
+		if s.Action == resolve.ActionUpgrade || s.Action == resolve.ActionDowngrade {
+			for _, v := range spec.Variants {
+				for _, c := range v.Components {
+					if c.Install != nil && c.Install.Phase == v1alpha1.PhasePreUpgrade {
+						notes = append(notes, "runs pre-upgrade hook "+c.Name+" before anything else")
+					}
+				}
+			}
+		}
 		if s.Local {
 			notes = append(notes, "a hand-written PackageSource decides the version, not the repositories")
 		}
