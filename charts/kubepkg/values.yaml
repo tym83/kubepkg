@@ -43,6 +43,27 @@ repositories: []
 
 replicas: 1
 
+metrics:
+  # A Service in front of the operator's metrics endpoint.
+  service: true
+  # A Prometheus Operator ServiceMonitor scraping it.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+  # Alerts: packages not ready, failed or rolled back upgrades, repositories
+  # that cannot be loaded or have not changed for long, reconcile errors.
+  prometheusRule:
+    enabled: false
+    labels: {}
+    # How long a repository index may stay unchanged before it is stale.
+    indexMaxAge: 168h
+  # A Grafana dashboard in a ConfigMap, for Grafana's dashboard sidecar.
+  dashboard:
+    enabled: false
+    labels:
+      grafana_dashboard: "1"
+
 resources:
   requests:
     cpu: 100m

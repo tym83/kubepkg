@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/meta/testrestmapper"
@@ -603,5 +604,37 @@ func TestReadyWhenClusterScopedAndUnservedKinds(t *testing.T) {
 	e.reconcile("later")
 	if ok, _, msg := ready(e.pkg("later")); ok || !strings.Contains(msg, "not served yet") {
 		t.Fatalf("a kind whose CRD is not installed yet: %v %q", ok, msg)
+	}
+}
+
+func TestMetricsFollowRevisions(t *testing.T) {
+	e := newEnv(t)
+	e.create(mkSource("metered", "1.0.0", true, "api", "web"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "metered"}})
+	e.reconcile("metered")
+	if v := testutil.ToFloat64(packageReady.WithLabelValues("metered")); v != 1 {
+		t.Fatalf("ready after install = %v", v)
+	}
+	if v := testutil.ToFloat64(packageInfo.WithLabelValues("metered", "1.0.0", "1")); v != 1 {
+		t.Fatalf("info after install = %v", v)
+	}
+
+	e.setVersion("metered", "1.1.0", true)
+	e.be.failOn["web"] = true
+	e.reconcile("metered")
+	for outcome, want := range map[string]float64{outcomeApplied: 1, outcomeFailed: 1, outcomeRolledBack: 1} {
+		if v := testutil.ToFloat64(revisionsTotal.WithLabelValues("metered", outcome)); v != want {
+			t.Errorf("revisions %s = %v, want %v", outcome, v, want)
+		}
+	}
+	if v := testutil.ToFloat64(packageReady.WithLabelValues("metered")); v != 0 {
+		t.Errorf("ready after a rolled back upgrade = %v", v)
+	}
+	if n := testutil.CollectAndCount(packageInfo); n == 0 {
+		t.Error("info series missing")
+	}
+
+	forgetPackage("metered")
+	if n := testutil.CollectAndCount(revisionsTotal, "kubepkg_revisions_total"); n != 0 {
+		t.Errorf("series of a removed package stay: %d", n)
 	}
 }

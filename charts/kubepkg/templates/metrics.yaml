@@ -1,0 +1,87 @@
+{{- if .Values.metrics.service }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "kubepkg.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "kubepkg.selector" . | nindent 4 }}
+  ports:
+    - {name: metrics, port: 8080, targetPort: metrics}
+{{- end }}
+{{- if .Values.metrics.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepkg.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  selector:
+    matchLabels: {{- include "kubepkg.selector" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+{{- end }}
+{{- if .Values.metrics.prometheusRule.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepkg.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  groups:
+    - name: kubepkg
+      rules:
+        - alert: KubepkgPackageNotReady
+          expr: kubepkg_package_ready == 0
+          for: 15m
+          labels: {severity: warning}
+          annotations:
+            summary: "Package {{ "{{ $labels.package }}" }} is not ready"
+            description: "See kubectl describe package {{ "{{ $labels.package }}" }} and kubepkg history {{ "{{ $labels.package }}" }}."
+        - alert: KubepkgUpgradeFailed
+          expr: increase(kubepkg_revisions_total{outcome=~"failed|rolled_back"}[30m]) > 0
+          labels: {severity: warning}
+          annotations:
+            summary: "An upgrade of {{ "{{ $labels.package }}" }} failed ({{ "{{ $labels.outcome }}" }})"
+        - alert: KubepkgRepositoryNotLoaded
+          expr: kubepkg_repository_ready == 0
+          for: 30m
+          labels: {severity: warning}
+          annotations:
+            summary: "Repository {{ "{{ $labels.repository }}" }} cannot be loaded or was refused"
+        - alert: KubepkgRepositoryStale
+          expr: time() - kubepkg_repository_index_generated_timestamp_seconds > {{ include "kubepkg.seconds" .Values.metrics.prometheusRule.indexMaxAge }}
+          labels: {severity: info}
+          annotations:
+            summary: "The index of {{ "{{ $labels.repository }}" }} has not changed for over {{ .Values.metrics.prometheusRule.indexMaxAge }}"
+        - alert: KubepkgReconcileErrors
+          expr: sum by (controller) (rate(controller_runtime_reconcile_errors_total{controller=~"kubepkg-.*"}[15m])) > 0
+          for: 15m
+          labels: {severity: warning}
+          annotations:
+            summary: "The kubepkg {{ "{{ $labels.controller }}" }} controller keeps failing to reconcile"
+{{- end }}
+{{- if .Values.metrics.dashboard.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kubepkg.labels" . | nindent 4 }}
+    {{- with .Values.metrics.dashboard.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+data:
+  kubepkg.json: |-
+{{ .Files.Get "files/dashboards/kubepkg.json" | indent 4 }}
+{{- end }}

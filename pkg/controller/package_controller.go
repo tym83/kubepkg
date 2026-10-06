@@ -83,6 +83,7 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	res, err := r.reconcile(ctx, pkg)
+	recordPackage(pkg)
 	if uerr := r.Status().Update(ctx, pkg); uerr != nil {
 		if apierrors.IsConflict(uerr) {
 			return ctrl.Result{Requeue: true}, nil
@@ -331,6 +332,7 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1alpha1.Package,
 	if err := r.Status().Update(ctx, rev); err != nil {
 		return ctrl.Result{}, err
 	}
+	countRevision(pkg.Name, outcomeApplied)
 	for i := range *revs {
 		o := &(*revs)[i]
 		if o.Spec.Revision < rev.Spec.Revision && o.Status.Phase == v1alpha1.PhaseApplied {
@@ -389,6 +391,7 @@ func (r *PackageReconciler) fail(ctx context.Context, pkg *v1alpha1.Package, rev
 	if err := r.Status().Update(ctx, rev); err != nil {
 		return ctrl.Result{}, err
 	}
+	countRevision(pkg.Name, outcomeFailed)
 	prev := lastGood(*revs, rev.Spec.Revision)
 	// The cluster no longer matches any earlier revision as recorded: part
 	// of the package may already run the new version. The last good one
@@ -427,6 +430,7 @@ func (r *PackageReconciler) fail(ctx context.Context, pkg *v1alpha1.Package, rev
 	pkg.Status.CurrentRevision = restored.Spec.Revision
 	pkg.Status.Version = restored.Spec.Version
 	setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonUpgradeRolledBack, restored.Status.Message)
+	countRevision(pkg.Name, outcomeRolledBack)
 	return ctrl.Result{}, nil
 }
 
@@ -551,6 +555,7 @@ func (r *PackageReconciler) rollbackTo(ctx context.Context, pkg *v1alpha1.Packag
 	pkg.Status.CurrentRevision = restored.Spec.Revision
 	pkg.Status.Version = restored.Spec.Version
 	setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonUpgradeRolledBack, restored.Status.Message)
+	countRevision(pkg.Name, outcomeRolledBack)
 	return ctrl.Result{}, clear()
 }
 
@@ -579,6 +584,7 @@ func (r *PackageReconciler) removeOrphans(ctx context.Context, pkg *v1alpha1.Pac
 
 // finalize removes releases, newest components first, and handles CRDs.
 func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1alpha1.Package) error {
+	forgetPackage(pkg.Name)
 	if !controllerutil.ContainsFinalizer(pkg, FinalizerCleanup) {
 		return nil
 	}

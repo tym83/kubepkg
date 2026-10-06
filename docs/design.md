@@ -343,6 +343,20 @@ The operator keeps every index loaded. A `Package` with no hand-written `Package
 
 A distribution adds index transports by URL scheme (`http` and `https` are built in) and a policy that admits indexes and versions — signature checks, allowed registries — through `operator.Options`.
 
+## Observability
+
+The operator exports Prometheus metrics next to controller-runtime's own:
+
+| Metric | Meaning |
+|---|---|
+| `kubepkg_package_ready{package}` | 1 when the package is ready |
+| `kubepkg_package_info{package,version,revision}` | the version and revision a package runs |
+| `kubepkg_revisions_total{package,outcome}` | revisions by outcome: `applied`, `failed`, `rolled_back` |
+| `kubepkg_repository_ready{repository}` | 1 when the repository's index is loaded and accepted |
+| `kubepkg_repository_index_generated_timestamp_seconds{repository}` | when the accepted index was built |
+
+The chart adds a metrics Service and, when enabled, a ServiceMonitor, a PrometheusRule with alerts (a package not ready for 15 minutes, a failed or rolled back upgrade, a repository that cannot be loaded, an index unchanged for longer than `indexMaxAge`, a controller that keeps failing to reconcile) and a Grafana dashboard.
+
 ## Other delivery tools without the operator
 
 Built packages are ordinary Helm charts in OCI registries, so any tool that installs Helm charts installs them. `kubepkg render <package>...` does the part those tools lack: it resolves the packages and their requirements, as `install` would for an empty cluster, and writes them in kubepkg's order for the tool to apply from Git.

@@ -24,6 +24,13 @@ jobs:
       - run: go test ./...
       - uses: azure/setup-helm@v4
       - run: helm lint charts/kubepkg
+      - name: Alert rules are valid
+        run: |
+          curl -fsSL https://github.com/prometheus/prometheus/releases/download/v3.15.0/prometheus-3.15.0.linux-amd64.tar.gz \
+            | tar xz --strip-components=1 prometheus-3.15.0.linux-amd64/promtool
+          helm template t charts/kubepkg --set metrics.prometheusRule.enabled=true -s templates/metrics.yaml \
+            | python3 -c 'import sys, yaml; d = [x for x in yaml.safe_load_all(sys.stdin) if x and x["kind"] == "PrometheusRule"][0]; print(yaml.safe_dump({"groups": d["spec"]["groups"]}))' > rules.yaml
+          ./promtool check rules rules.yaml
 
   e2e:
     runs-on: ubuntu-latest

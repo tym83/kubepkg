@@ -70,6 +70,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err := r.Get(ctx, req.NamespacedName, rp); err != nil {
 		if apierrors.IsNotFound(err) {
 			r.Repositories.Store.Delete(req.Name)
+			forgetRepository(req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -82,6 +83,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	idx, digest, reason, err := r.load(ctx, rp)
 	if err != nil {
 		r.Repositories.Store.Failed(rp.Name)
+		recordRepository(rp, false)
 		meta.SetStatusCondition(&rp.Status.Conditions, metav1.Condition{
 			Type: "Ready", Status: metav1.ConditionFalse, Reason: reason, Message: err.Error(), ObservedGeneration: rp.Generation,
 		})
@@ -96,6 +98,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	rp.Status.IndexDigest = digest
 	rp.Status.LastFetched = &now
 	rp.Status.IndexGenerated = idx.Generated
+	recordRepository(rp, true)
 	meta.SetStatusCondition(&rp.Status.Conditions, metav1.Condition{
 		Type: "Ready", Status: metav1.ConditionTrue, Reason: "IndexLoaded",
 		Message: fmt.Sprintf("%d packages", len(idx.Packages)), ObservedGeneration: rp.Generation,
