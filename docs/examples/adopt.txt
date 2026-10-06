@@ -1,0 +1,20 @@
+$ kubepkg adopt cert-manager
+adopt cert-manager 1.21.2 build 2 from main
+
+COMPONENT     RELEASE                    FOUND                                                     THEN
+cert-manager  cert-manager/cert-manager  cert-manager v1.21.2 (app v1.21.2), revision 2, deployed  upgrade in place to the package's chart, keeping its 2 top-level values
+
+Values are carried over as the releases have them; check they suit the package's charts.
+
+Nothing changed; run again with --yes to adopt.
+$ kubepkg adopt cert-manager --yes
+
+package cert-manager adopted; follow it with "list"
+$ kubepkg list
+NAME          VERSION  REVISION  READY  REASON
+cert-manager  1.21.2   1         True   ReconciliationSucceeded
+$ helm -n cert-manager history cert-manager
+REVISION	UPDATED                 	STATUS    	CHART                	APP VERSION	DESCRIPTION                    
+1       	Tue Oct  6 13:36:00 2026	superseded	cert-manager-v1.21.2 	v1.21.2    	Release "cert-manager" failed: 
+2       	Tue Oct  6 13:36:59 2026	superseded	cert-manager-v1.21.2 	v1.21.2    	Upgrade complete               
+3       	Tue Oct  6 08:38:06 2026	deployed  	cert-manager-1.21.2-2	v1.21.2    	Upgrade complete               

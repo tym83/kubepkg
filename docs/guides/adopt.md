@@ -9,15 +9,10 @@ kubepkg adopt cert-manager
 ```
 
 ```text
-adopt cert-manager 1.21.2 build 2 from main
-
-COMPONENT     RELEASE                    FOUND                                                  THEN
-cert-manager  cert-manager/cert-manager  cert-manager v1.20.0 (app v1.20.0), revision 7, deployed  upgrade in place to the package's chart, keeping its 4 top-level values
-
-Values are carried over as the releases have them; check they suit the package's charts.
-
-Nothing changed; run again with --yes to adopt.
+--8<-- "examples/adopt.txt"
 ```
+
+This is real output from a test cluster. cert-manager had been installed there with `helm install` from the upstream chart, with `crds.enabled=true` and `replicaCount=2`. After adoption the Deployment is the same object, it still runs two replicas, and the Helm release went from the upstream chart to the package's chart in place (revision 3).
 
 For each component of the package, `adopt` looks for the Helm release the package would create: the same release name, in the same namespace. It shows what it found: the chart, its version, the release revision and status. It changes nothing until you add `--yes`.
 
