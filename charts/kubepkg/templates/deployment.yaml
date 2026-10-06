@@ -1,5 +1,5 @@
-{{- if and (eq .Values.backend "helm") (not .Values.clusterAdmin) }}
-{{- fail "the helm backend needs clusterAdmin: true, see values.yaml" }}
+{{- if and (has .Values.backend (list "helm" "werf")) (not .Values.clusterAdmin) }}
+{{- fail (printf "the %s backend needs clusterAdmin: true, see values.yaml" .Values.backend) }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment

@@ -38,8 +38,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [run, flux, argo, kubevirt]
-    name: e2e (${{ matrix.suite }})
+        include:
+          - {suite: run, backend: helm}
+          - {suite: run, backend: werf}
+          - {suite: flux, backend: flux}
+          - {suite: argo, backend: argo}
+          - {suite: kubevirt, backend: helm}
+    name: e2e (${{ matrix.suite }}, ${{ matrix.backend }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -49,5 +54,15 @@ jobs:
       - uses: helm/kind-action@v1
         with:
           install_only: true
+      - name: Install nelm
+        if: matrix.backend == 'werf'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL -o "$RUNNER_TEMP/bin/nelm" https://tuf.nelm.sh/targets/releases/1.31.1/linux-amd64/bin/nelm
+          echo "45178ece53a9b12d1d15b53d138f0d8fedf29362b12dc146015fd85b79707633  $RUNNER_TEMP/bin/nelm" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bin/nelm"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: End-to-end on kind
+        env:
+          BACKEND: ${{ matrix.backend }}
         run: test/e2e/${{ matrix.suite }}.sh

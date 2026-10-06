@@ -4,10 +4,11 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# How components are installed: helm (in-process, can roll back), flux or argo.
+# How components are installed: helm (in-process, can roll back), werf
+# (through Nelm, werf's deployment engine, can roll back), flux or argo.
 backend: helm
 
-# The helm backend installs whatever the packages' charts contain, CRDs and
+# The helm and werf backends install whatever the packages' charts contain, CRDs and
 # cluster roles included; Kubernetes only lets it grant permissions it holds,
 # so it needs cluster-admin. The flux and argo backends hand charts to Flux or
 # Argo CD and get by with the operator's own role; set this to false for them.
