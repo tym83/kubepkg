@@ -54,7 +54,7 @@ nav:
       - Repositories and trust: guides/repositories.md
       - Building packages: guides/building.md
       - Making a distribution: guides/distributions.md
-      - Backends: Helm, werf, Flux, Argo CD: guides/backends.md
+      - "Backends: Helm, werf, Flux, Argo CD": guides/backends.md
       - GitOps without the operator: guides/gitops.md
       - Several clusters: guides/multi-cluster.md
       - Monitoring: guides/observability.md
