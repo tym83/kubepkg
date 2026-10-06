@@ -334,6 +334,17 @@ func (r *PackageSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{RequeueAfter: fleetRequeue}, nil
 }
 
+// firstLine keeps a status message short: its first line, cut at max.
+func firstLine(s string, max int) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
+}
+
 // failedReasons are package conditions that end a change badly.
 var failedReasons = map[string]bool{v1alpha1.ReasonUpgradeFailed: true, v1alpha1.ReasonUpgradeRolledBack: true}
 
@@ -392,7 +403,7 @@ func (r *PackageSetReconciler) observe(ctx context.Context, set *v1alpha1.Packag
 		case current && failedReasons[cond.Reason]:
 			st.failed = true
 			if st.failure == "" {
-				st.failure = p.Name + " " + cond.Message
+				st.failure = p.Name + ": " + firstLine(cond.Message, 200)
 			}
 			notReady = append(notReady, p.Name)
 		default:

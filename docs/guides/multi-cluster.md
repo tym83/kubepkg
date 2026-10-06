@@ -138,16 +138,25 @@ kubepkg set status base
 ```
 
 ```text
-base: 3 of 4 clusters ready, 4 updated
+prod: 2 of 2 clusters ready
 
-CLUSTER  UPDATED  CERT-MANAGER  VIRTUALIZATION
-edge-1   yes      1.21.2        1.0.0
-edge-2   yes      1.21.2        1.0.0
-edge-3   yes      1.21.1 *      1.0.0
-lab      yes      1.21.2        -
+CLUSTER  UPDATED  KUBE-STATE-METRICS
+self     yes      2.20.0
+edge     yes      2.20.0
 ```
 
-`set status` prints the version of each package on every cluster. A version that differs from the most common one is marked `*`, and a dash means the package is not installed there yet.
+While a rollout is paused after a failure, the same command shows where it stopped. Here the canary `self` took a broken change and rolled it back, and `edge` never got it:
+
+```text
+prod: 0 of 2 clusters ready, 1 updated
+rollout paused: stopped after a failure on self: kube-state-metrics: revision 3 failed (component kube-state-metrics failed: upgrade …
+
+CLUSTER  UPDATED  KUBE-STATE-METRICS
+self     yes      2.20.0
+edge     no       2.20.0
+```
+
+`set status` prints the version of each package on every cluster. A version that differs from the most common one is marked `*`, and a dash means the package is not installed there yet. The outputs above come from a hub that registers itself as the canary `self` next to a member `edge` (`test/e2e/fleet.sh`).
 
 ## Moving clusters between sets
 

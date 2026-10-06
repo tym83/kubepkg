@@ -305,7 +305,7 @@ func TestRolloutOneClusterAtATimeAndPauseOnFailure(t *testing.T) {
 	if f.packages("b")["cert-manager"].Spec.Version != "~1.21" {
 		t.Fatal("the change reached b after a failed with it")
 	}
-	if c := meta.FindStatusCondition(f.set().Status.Conditions, "RolloutPaused"); c == nil || c.Status != metav1.ConditionTrue || !strings.Contains(c.Message, "a: cert-manager pods crashlooping") {
+	if c := meta.FindStatusCondition(f.set().Status.Conditions, "RolloutPaused"); c == nil || c.Status != metav1.ConditionTrue || !strings.Contains(c.Message, "a: cert-manager: pods crashlooping") {
 		t.Fatalf("paused: %+v", c)
 	}
 	if m := f.status("b").Message; !strings.Contains(m, "paused after a failure on a") {
