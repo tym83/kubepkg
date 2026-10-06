@@ -121,7 +121,11 @@ those unless told to accept them.`,
 				for i, u := range repos {
 					s := spec
 					s.URL, s.Priority = u, int32(len(repos)-i)
-					sources = append(sources, bundle.Source{Name: fmt.Sprintf("repo%d", i), Spec: s})
+					name := fmt.Sprintf("repo%d", i+1)
+					if len(repos) == 1 {
+						name = "main"
+					}
+					sources = append(sources, bundle.Source{Name: name, Spec: s})
 				}
 			} else {
 				c, err := cl.client()
