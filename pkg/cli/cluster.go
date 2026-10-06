@@ -21,6 +21,8 @@ package cli
 
 import (
 	"fmt"
+	"k8s.io/client-go/discovery"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -80,7 +82,37 @@ func (c *cluster) client() (client.Client, error) {
 	if err := v1beta1.AddToSchemeForGroup(c.apiGroup)(scheme); err != nil {
 		return nil, err
 	}
+	if err := checkServed(cfg, c.apiGroup); err != nil {
+		return nil, err
+	}
 	return client.New(cfg, client.Options{Scheme: scheme})
+}
+
+// checkServed explains a cluster that does not serve this CLI's API
+// version, instead of a bare discovery error on the first request.
+func checkServed(cfg *rest.Config, group string) error {
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return err
+	}
+	groups, err := dc.ServerGroups()
+	if err != nil {
+		return nil // let the request itself report it
+	}
+	for _, g := range groups.Groups {
+		if g.Name != group {
+			continue
+		}
+		var served []string
+		for _, v := range g.Versions {
+			if v.Version == v1beta1.Version {
+				return nil
+			}
+			served = append(served, v.Version)
+		}
+		return fmt.Errorf("the cluster serves %s %s, an older kubepkg; this CLI needs %s/%s: upgrade kubepkg in the cluster (helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg), or use the CLI release that matches it", group, strings.Join(served, ", "), group, v1beta1.Version)
+	}
+	return fmt.Errorf("the cluster does not serve %s: kubepkg is not installed there (helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace)", group)
 }
 
 // NewRootCommand returns the root command with every kubepkg command.

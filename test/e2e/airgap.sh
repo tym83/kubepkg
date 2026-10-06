@@ -26,6 +26,8 @@ fail() { echo "FAIL: $*"; ${K} -n kubepkg-system logs -l app.kubernetes.io/name=
 bench() { ${K} -n airgap exec airgap -c bench -- "$@"; }
 
 step "air-gap side: a registry and a web server in the cluster"
+# A fresh pod each run: an old one carries the files of the last run.
+${K} -n airgap delete pod airgap --ignore-not-found --wait --timeout 120s >/dev/null 2>&1 || true
 ${K} apply -f - >/dev/null <<'EOF'
 apiVersion: v1
 kind: Namespace
@@ -103,6 +105,9 @@ helm --kube-context "${KUBE_CONTEXT}" upgrade --install kubepkg "${ROOT}/charts/
   --set mirror=oci://airgap.airgap.svc:5000/mirror \
   --set 'repositories[0].name=main' --set 'repositories[0].url=http://airgap.airgap.svc:8000/main/index.yaml' \
   --set-file 'repositories[0].publicKeys[0]'="${WORK}/index.pub" >/dev/null
+# Whatever an earlier run installed goes, so the package below can only
+# come from the mirror.
+${K} delete packages.kubepkg.dev "${PACKAGE}" --ignore-not-found --wait --timeout 600s >/dev/null
 ${K} apply -f - >/dev/null <<EOF
 apiVersion: kubepkg.dev/v1beta1
 kind: Repository
