@@ -36,13 +36,26 @@ import (
 type fakeMembers struct {
 	clients map[string]client.Client
 	down    map[string]bool
+	deletes []string // cluster/name of every deleted object
+}
+
+// countingClient records deletes on a member.
+type countingClient struct {
+	client.Client
+	cluster string
+	m       *fakeMembers
+}
+
+func (c countingClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	c.m.deletes = append(c.m.deletes, c.cluster+"/"+obj.GetName())
+	return c.Client.Delete(ctx, obj, opts...)
 }
 
 func (f *fakeMembers) For(_ context.Context, c *v1alpha1.Cluster) (*Member, error) {
 	if f.down[c.Name] {
 		return nil, errors.New("connection refused")
 	}
-	return &Member{Client: f.clients[c.Name]}, nil
+	return &Member{Client: countingClient{Client: f.clients[c.Name], cluster: c.Name, m: f}}, nil
 }
 
 func kubepkgClient(t *testing.T, objs ...client.Object) client.Client {
@@ -107,7 +120,7 @@ func (f *fleet) markReady(cluster, name string) {
 	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, p); err != nil {
 		f.t.Fatal(err)
 	}
-	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "ReconciliationSucceeded"})
+	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{Type: "Ready", Status: metav1.ConditionTrue, Reason: "ReconciliationSucceeded", ObservedGeneration: p.Generation})
 	if err := c.Status().Update(context.Background(), p); err != nil {
 		f.t.Fatal(err)
 	}
@@ -165,7 +178,7 @@ func TestPackageSetSpreadsAndReports(t *testing.T) {
 			t.Fatalf("b must report the conflict: %+v", c)
 		}
 	}
-	if c := meta.FindStatusCondition(s.Status.Conditions, "Ready"); c == nil || c.Status != metav1.ConditionFalse || c.Message != "1 of 2 clusters ready" {
+	if c := meta.FindStatusCondition(s.Status.Conditions, "Ready"); c == nil || c.Status != metav1.ConditionFalse || c.Message != "1 of 2 clusters ready, 1 updated" {
 		t.Fatalf("condition: %+v", c)
 	}
 
@@ -220,5 +233,190 @@ func TestDeletingASetCleansUpButWaitsForUnreachableClusters(t *testing.T) {
 	}
 	if err := f.hub.Get(context.Background(), types.NamespacedName{Name: "base"}, &v1alpha1.PackageSet{}); err == nil {
 		t.Fatal("the set was not released")
+	}
+}
+
+func (f *fleet) markFailed(cluster, name string) {
+	f.t.Helper()
+	c := f.members.clients[cluster]
+	p := &v1alpha1.Package{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, p); err != nil {
+		f.t.Fatal(err)
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{Type: "Ready", Status: metav1.ConditionFalse, Reason: v1alpha1.ReasonUpgradeRolledBack, Message: "pods crashlooping", ObservedGeneration: p.Generation})
+	if err := c.Status().Update(context.Background(), p); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+func (f *fleet) status(cluster string) v1alpha1.PackageSetClusterStatus {
+	f.t.Helper()
+	for _, c := range f.set().Status.Clusters {
+		if c.Name == cluster {
+			return c
+		}
+	}
+	f.t.Fatalf("no status for %s", cluster)
+	return v1alpha1.PackageSetClusterStatus{}
+}
+
+func oneBy(s *v1alpha1.PackageSet) *v1alpha1.PackageSet {
+	s.Spec.Packages = s.Spec.Packages[:1]
+	s.Spec.Rollout = &v1alpha1.PackageSetRollout{MaxInProgress: 1}
+	return s
+}
+
+func TestRolloutOneClusterAtATimeAndPauseOnFailure(t *testing.T) {
+	f := newFleet(t)
+	if err := f.hub.Create(context.Background(), oneBy(baseSet())); err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile()
+	if len(f.packages("a")) != 1 || len(f.packages("b")) != 0 {
+		t.Fatalf("first step: a=%d b=%d", len(f.packages("a")), len(f.packages("b")))
+	}
+	if m := f.status("b").Message; m != "waiting for its turn" {
+		t.Fatalf("b: %q", m)
+	}
+	f.markReady("a", "cert-manager")
+	f.reconcile()
+	if len(f.packages("b")) != 1 {
+		t.Fatal("b did not get the set once a was done")
+	}
+	f.markReady("b", "cert-manager")
+	f.reconcile()
+	if s := f.set(); s.Status.ReadyClusters != 2 || s.Status.UpdatedClusters != 2 {
+		t.Fatalf("status: %+v", s.Status)
+	}
+
+	// A change goes to a first; a fails with it, so b keeps the old one.
+	s := f.set()
+	s.Spec.Packages[0].Spec.Version = "~1.22"
+	if err := f.hub.Update(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile()
+	if f.packages("a")["cert-manager"].Spec.Version != "~1.22" || f.packages("b")["cert-manager"].Spec.Version != "~1.21" {
+		t.Fatal("the change did not start with a alone")
+	}
+	f.markFailed("a", "cert-manager")
+	f.reconcile()
+	f.reconcile()
+	if f.packages("b")["cert-manager"].Spec.Version != "~1.21" {
+		t.Fatal("the change reached b after a failed with it")
+	}
+	if c := meta.FindStatusCondition(f.set().Status.Conditions, "RolloutPaused"); c == nil || c.Status != metav1.ConditionTrue || !strings.Contains(c.Message, "a: cert-manager: pods crashlooping") {
+		t.Fatalf("paused: %+v", c)
+	}
+	if m := f.status("b").Message; !strings.Contains(m, "paused after a failure on a") {
+		t.Fatalf("b: %q", m)
+	}
+
+	// A new change resumes, starting again with a.
+	s = f.set()
+	s.Spec.Packages[0].Spec.Version = "~1.23"
+	if err := f.hub.Update(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile()
+	if f.packages("a")["cert-manager"].Spec.Version != "~1.23" {
+		t.Fatal("a new change did not resume the rollout")
+	}
+	if c := meta.FindStatusCondition(f.set().Status.Conditions, "RolloutPaused"); c == nil || c.Status != metav1.ConditionFalse {
+		t.Fatalf("still paused: %+v", c)
+	}
+}
+
+func TestCanariesGoFirst(t *testing.T) {
+	f := newFleet(t)
+	cb := &v1alpha1.Cluster{}
+	if err := f.hub.Get(context.Background(), types.NamespacedName{Name: "b"}, cb); err != nil {
+		t.Fatal(err)
+	}
+	cb.Labels["ring"] = "canary"
+	if err := f.hub.Update(context.Background(), cb); err != nil {
+		t.Fatal(err)
+	}
+	set := baseSet()
+	set.Spec.Packages = set.Spec.Packages[:1]
+	set.Spec.Rollout = &v1alpha1.PackageSetRollout{Canary: &metav1.LabelSelector{MatchLabels: map[string]string{"ring": "canary"}}}
+	if err := f.hub.Create(context.Background(), set); err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile()
+	if len(f.packages("b")) != 1 || len(f.packages("a")) != 0 {
+		t.Fatal("the canary did not go alone first")
+	}
+	if m := f.status("a").Message; m != "waiting for the canary clusters" {
+		t.Fatalf("a: %q", m)
+	}
+	f.markReady("b", "cert-manager")
+	f.reconcile()
+	if len(f.packages("a")) != 1 {
+		t.Fatal("a did not follow the canary")
+	}
+}
+
+func TestAClusterMovesBetweenSetsWithoutReinstalling(t *testing.T) {
+	for _, order := range []string{"old set first", "new set first"} {
+		t.Run(order, func(t *testing.T) {
+			f := newFleet(t)
+			ctx := context.Background()
+			base := baseSet()
+			base.Spec.Packages = base.Spec.Packages[:1]
+			edge := baseSet()
+			edge.Name = "edge"
+			edge.Spec.ClusterSelector = metav1.LabelSelector{MatchLabels: map[string]string{"env": "edge"}}
+			edge.Spec.Packages = base.Spec.Packages[:1]
+			edge.Spec.Packages[0].Spec.Version = "~1.22"
+			for _, s := range []*v1alpha1.PackageSet{base, edge} {
+				if err := f.hub.Create(ctx, s); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.reconcile()
+			before := f.packages("a")["cert-manager"]
+			if before.Labels[v1alpha1.LabelPackageSet] != "base" {
+				t.Fatalf("setup: %+v", before.Labels)
+			}
+
+			ca := &v1alpha1.Cluster{}
+			if err := f.hub.Get(ctx, types.NamespacedName{Name: "a"}, ca); err != nil {
+				t.Fatal(err)
+			}
+			ca.Labels["env"] = "edge"
+			if err := f.hub.Update(ctx, ca); err != nil {
+				t.Fatal(err)
+			}
+			edgeReq := ctrl.Request{NamespacedName: types.NamespacedName{Name: "edge"}}
+			if order == "new set first" {
+				if _, err := f.r.Reconcile(ctx, edgeReq); err != nil {
+					t.Fatal(err)
+				}
+				// The new set takes the package at once: base no longer
+				// wants it there, so there is no conflict to report.
+				if got := f.packages("a")["cert-manager"].Labels[v1alpha1.LabelPackageSet]; got != "edge" {
+					t.Fatalf("the new set did not take the package over: owner %q", got)
+				}
+				f.reconcile()
+			} else {
+				f.reconcile()
+				if _, err := f.r.Reconcile(ctx, edgeReq); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, d := range f.members.deletes {
+				if d == "a/cert-manager" {
+					t.Fatal("the package was deleted while moving between sets, which uninstalls it")
+				}
+			}
+			after, ok := f.packages("a")["cert-manager"]
+			if !ok {
+				t.Fatal("the package was removed while moving between sets")
+			}
+			if after.UID != before.UID || after.Labels[v1alpha1.LabelPackageSet] != "edge" || after.Spec.Version != "~1.22" {
+				t.Fatalf("after the move: uid %s->%s, labels %v, version %s", before.UID, after.UID, after.Labels, after.Spec.Version)
+			}
+		})
 	}
 }

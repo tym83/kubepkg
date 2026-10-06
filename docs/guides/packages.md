@@ -49,7 +49,7 @@ kubepkg install virtualization --yes               # without asking, for scripts
 kubepkg remove virtualization --autoremove --yes
 ```
 
-`install` resolves the named packages together with everything they require, against the repositories the cluster is subscribed to. Requirements that are already installed and satisfied are kept as they are. Packages pulled in only as requirements are marked with the `kubepkg.dev/dependency` annotation. `remove --autoremove` uses that mark to remove requirements nothing needs any more. `remove` refuses to remove a package while a package that stays requires it, directly or as the only provider of a capability.
+`install` resolves the named packages together with everything they require, against the repositories the cluster is subscribed to. Requirements that are already installed and satisfied are kept as they are. Packages pulled in only as requirements are marked with the `kubepkg.dev/dependency` annotation. `remove --autoremove` uses that mark to remove requirements nothing needs any more. `remove` refuses to remove a package while a package that stays requires it, directly or as the only provider of a capability. A removed package's CRDs stay by default (`crdPolicy: Retain`), and their fields stay owned by kubepkg's operator. Installing the same software later with another tool, for example `helm install`, may then report server-side apply conflicts on those CRDs. Add `--force-conflicts`, or let kubepkg install it again.
 
 ![kubepkg plan](../img/plan.svg)
 

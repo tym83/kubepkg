@@ -6,7 +6,7 @@ This document specifies the `v1alpha1` API and the behaviour of the operator and
 
 In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, readiness conditions and pre-upgrade hooks, a plan before changes, four backends (Helm, werf, Flux and Argo CD), package repositories with a root of trust, a hub for several clusters, metrics and alerts, and settings that let a platform embed kubepkg without changing its code.
 
-Out of scope, on the roadmap: delegated roles for parts of a repository (TUF targets delegation), staged rollouts across clusters.
+Out of scope, on the roadmap: delegated roles for parts of a repository (TUF targets delegation).
 
 ## Resources
 
@@ -393,6 +393,8 @@ spec:
 ```
 
 The hub writes the repositories and packages to every selected cluster, labelled `kubepkg.dev/package-set`, and never touches objects it did not create: a Package of the same name made by hand is reported as a conflict and left alone. Dropping a package from the set removes it from the clusters; a cluster that stops matching the selector loses what the set wrote there; deleting the set removes everything it wrote, and waits for unreachable clusters rather than leave packages behind. The set's status counts ready packages per cluster (`kubepkg set list`), and each Cluster reports whether the hub reaches it and whether it runs kubepkg (`kubepkg cluster list`).
+
+A set's `rollout` paces a change across its clusters: canary clusters first, at most `maxInProgress` clusters taking it at once, and a pause once a cluster that took it reports a failed or rolled back upgrade; a new change resumes. Each object the set writes carries the change it belongs to, so a cluster has a change once all its objects carry it, and is done with it once its packages are ready at their current generation. A cluster moving to another set that carries the same package or repository hands the object over instead of deleting it. `kubepkg set status` shows the version of every package on every cluster.
 
 ## Observability
 

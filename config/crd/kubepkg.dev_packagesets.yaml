@@ -18,7 +18,10 @@ spec:
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.readyClusters
-      name: Clusters
+      name: Ready Clusters
+      type: integer
+    - jsonPath: .status.updatedClusters
+      name: Updated
       type: integer
     - jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
@@ -261,10 +264,80 @@ spec:
                   - spec
                   type: object
                 type: array
+              rollout:
+                description: |-
+                  Rollout says how a change to the set reaches its clusters; without
+                  it every cluster gets the change at once.
+                properties:
+                  canary:
+                    description: |-
+                      Canary picks clusters that take a change first; the others follow
+                      once every canary is done with it.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  maxInProgress:
+                    description: |-
+                      MaxInProgress is how many clusters may be taking a change at once;
+                      0 means all of them.
+                    format: int32
+                    type: integer
+                  pauseOnFailure:
+                    description: |-
+                      PauseOnFailure stops a change from reaching more clusters once a
+                      cluster that took it reports a failed or rolled back upgrade.
+                      Default true. A new change to the set resumes the rollout.
+                    type: boolean
+                type: object
             type: object
           status:
             description: PackageSetStatus aggregates the set over its clusters.
             properties:
+              change:
+                description: Change identifies the set's current repositories and
+                  packages.
+                type: string
               clusters:
                 items:
                   description: PackageSetClusterStatus is the set's state on one cluster.
@@ -281,6 +354,16 @@ spec:
                     total:
                       format: int32
                       type: integer
+                    updated:
+                      description: Updated is true once the cluster has the set's
+                        current change.
+                      type: boolean
+                    versions:
+                      additionalProperties:
+                        type: string
+                      description: Versions are the versions the set's packages run
+                        on the cluster.
+                      type: object
                   required:
                   - name
                   - ready
@@ -346,6 +429,11 @@ spec:
               readyClusters:
                 description: ReadyClusters counts clusters where every package is
                   ready.
+                format: int32
+                type: integer
+              updatedClusters:
+                description: UpdatedClusters counts clusters that have the current
+                  change.
                 format: int32
                 type: integer
             type: object

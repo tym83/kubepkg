@@ -111,8 +111,58 @@ kubepkg --context edge-1 list
 kubepkg --context edge-1 history cert-manager
 ```
 
+## Rolling out a change carefully
+
+By default a change to a set, such as a new version constraint, new values or another package, reaches every selected cluster at once. `rollout` paces it:
+
+```yaml
+spec:
+  rollout:
+    canary: {matchLabels: {ring: canary}}   # these clusters first
+    maxInProgress: 2                        # then two clusters at a time
+    pauseOnFailure: true                    # the default
+```
+
+- **Canary clusters** take a change first. The others follow only once every canary is done with it, meaning every package there is ready with the change.
+- **maxInProgress** bounds how many clusters may be taking a change at once. A cluster counts as in progress from the moment it gets the change until all its packages are ready with it.
+- **pauseOnFailure** stops the change from reaching more clusters as soon as a cluster that took it reports a failed or rolled-back upgrade. The set reports `RolloutPaused` and names the cluster and the reason. Clusters that already took the change keep it, and each one's own revision history and rollback protect it. Fixing the set, for example with a corrected version or values, is a new change, and the rollout resumes with it.
+
+A cluster that joins the set later takes the current change through the same gates.
+
+The hub paces changes **to the set**. A package whose constraint allows newer versions, such as `~1.21`, moves on every cluster on its own as the repository gains them. To roll versions out in waves, pin versions in the set, exact or tight, and change them in the set.
+
+## Seeing where every cluster is
+
+```bash
+kubepkg set status base
+```
+
+```text
+prod: 2 of 2 clusters ready
+
+CLUSTER  UPDATED  KUBE-STATE-METRICS
+self     yes      2.20.0
+edge     yes      2.20.0
+```
+
+While a rollout is paused after a failure, the same command shows where it stopped. Here the canary `self` took a broken change and rolled it back, and `edge` never got it:
+
+```text
+prod: 0 of 2 clusters ready, 1 updated
+rollout paused: stopped after a failure on self: kube-state-metrics: revision 3 failed (component kube-state-metrics failed: upgrade …
+
+CLUSTER  UPDATED  KUBE-STATE-METRICS
+self     yes      2.20.0
+edge     no       2.20.0
+```
+
+`set status` prints the version of each package on every cluster. A version that differs from the most common one is marked `*`, and a dash means the package is not installed there yet. The outputs above come from a hub that registers itself as the canary `self` next to a member `edge` (`test/e2e/fleet.sh`).
+
+## Moving clusters between sets
+
+When a cluster leaves one set and another set takes it, packages and repositories that both sets carry are **handed over, not reinstalled**. The object stays, changes owner, and then follows the new set's spec and rollout. This works whichever set the hub reconciles first. Only what no set wants any more is removed, and removing it uninstalls it.
+
 ## Things to know
 
-- The hub writes the same spec to every selected cluster at once. Staged rollouts across clusters are on the roadmap. Until then, change a set's version when you are ready for all of its clusters to move.
-- Removing a package from a cluster uninstalls it, whether you drop the package from the set, relabel the cluster out of the selector, or delete the set. Moving a cluster from one set to another set that carries the same package therefore uninstalls it and installs it again. Prefer changing a set's contents over moving clusters between sets that overlap.
 - The hub needs to reach the members' API servers. Members do not need to reach the hub.
+- Deleting a set removes what it wrote, except objects another set takes over. The deletion waits for unreachable members.

@@ -164,10 +164,22 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // PackageSetReconciler writes a set's repositories and packages to the
-// clusters it selects and reports how far each got.
+// clusters it selects, paced by its rollout, and reports how far each got.
 type PackageSetReconciler struct {
 	client.Client
 	Members MemberClients
+}
+
+// memberState is what the set finds on one cluster.
+type memberState struct {
+	cluster *v1alpha1.Cluster
+	member  *Member
+	status  v1alpha1.PackageSetClusterStatus
+	// updated: every object the set writes there carries the current
+	// change; done: and every package is ready with it; failed: a package
+	// failed or rolled back with it.
+	updated, done, failed bool
+	failure               string
 }
 
 // Reconcile brings one set's clusters in line.
@@ -180,12 +192,16 @@ func (r *PackageSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	var sets v1alpha1.PackageSetList
+	if err := r.List(ctx, &sets); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	if !set.DeletionTimestamp.IsZero() {
 		var failed []string
 		for _, name := range previous(set) {
 			if c, ok := all[name]; ok {
-				if err := r.cleanup(ctx, set, c, nil, nil); err != nil {
+				if err := r.cleanup(ctx, set, c, nil, nil, sets.Items); err != nil {
 					failed = append(failed, name+": "+err.Error())
 				}
 			}
@@ -203,35 +219,100 @@ func (r *PackageSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, err
 		}
 	}
+	change, err := digestOf(struct {
+		Repositories []v1alpha1.PackageSetRepository
+		Packages     []v1alpha1.PackageSetPackage
+	}{set.Spec.Repositories, set.Spec.Packages})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	change = strings.TrimPrefix(change, "sha256:")[:16]
 
-	wanted := map[string]bool{}
-	for _, p := range set.Spec.Packages {
-		wanted[p.Name] = true
-	}
-	wantedRepos := map[string]bool{}
-	for _, rp := range set.Spec.Repositories {
-		wantedRepos[rp.Name] = true
-	}
-	// Clusters the set no longer selects lose what it wrote there.
+	// Clusters the set no longer selects lose what it wrote there, unless
+	// another set takes it over.
 	for _, name := range previous(set) {
 		if _, still := selected[name]; !still {
 			if c, ok := all[name]; ok {
-				_ = r.cleanup(ctx, set, c, nil, nil)
+				_ = r.cleanup(ctx, set, c, nil, nil, sets.Items)
 			}
 		}
 	}
 
+	rollout := set.Spec.Rollout
+	if rollout == nil {
+		rollout = &v1alpha1.PackageSetRollout{}
+	}
+	var canary labels.Selector
+	if rollout.Canary != nil {
+		if canary, err = metav1.LabelSelectorAsSelector(rollout.Canary); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+	isCanary := func(c *v1alpha1.Cluster) bool { return canary != nil && canary.Matches(labels.Set(c.Labels)) }
+	order := sortedClusterNames(selected)
+	sort.SliceStable(order, func(i, j int) bool { return isCanary(selected[order[i]]) && !isCanary(selected[order[j]]) })
+
+	states := make([]*memberState, 0, len(order))
+	for _, name := range order {
+		states = append(states, r.observe(ctx, set, selected[name], change))
+	}
+	pause := rollout.PauseOnFailure == nil || *rollout.PauseOnFailure
+	inProgress, canariesDone, failedOn := 0, true, ""
+	for _, st := range states {
+		if st.updated && !st.done {
+			inProgress++
+		}
+		if st.updated && st.failed && failedOn == "" {
+			failedOn = st.cluster.Name + ": " + st.failure
+		}
+		if isCanary(st.cluster) && !(st.updated && st.done) {
+			canariesDone = false
+		}
+	}
+	paused := pause && failedOn != ""
+	for _, st := range states {
+		if st.member == nil {
+			continue
+		}
+		if !st.updated {
+			switch {
+			case paused:
+				st.status.Message = "waiting: the rollout is paused after a failure on " + failedOn
+				continue
+			case canary != nil && !isCanary(st.cluster) && !canariesDone:
+				st.status.Message = "waiting for the canary clusters"
+				continue
+			case rollout.MaxInProgress > 0 && inProgress >= int(rollout.MaxInProgress):
+				st.status.Message = "waiting for its turn"
+				continue
+			}
+			inProgress++
+		}
+		// Clusters that have the change are written again too, which puts
+		// back anything edited by hand there.
+		if problems := r.write(ctx, set, st, change, sets.Items); len(problems) > 0 {
+			st.status.Message = strings.Join(problems, "; ")
+			continue
+		}
+		st.status.Updated = true
+		st.updated = true
+	}
+
 	var statuses []v1alpha1.PackageSetClusterStatus
-	readyClusters := int32(0)
-	for _, name := range sortedClusterNames(selected) {
-		st := r.apply(ctx, set, selected[name], wanted, wantedRepos)
-		if st.Total > 0 && st.Ready == st.Total && st.Message == "" {
+	readyClusters, updatedClusters := int32(0), int32(0)
+	for _, st := range states {
+		if st.updated && st.done {
 			readyClusters++
 		}
-		statuses = append(statuses, st)
+		if st.updated {
+			updatedClusters++
+		}
+		statuses = append(statuses, st.status)
 	}
 	set.Status.Clusters = statuses
 	set.Status.ReadyClusters = readyClusters
+	set.Status.UpdatedClusters = updatedClusters
+	set.Status.Change = change
 	cond := metav1.Condition{Type: "Ready", ObservedGeneration: set.Generation}
 	switch {
 	case len(selected) == 0:
@@ -239,91 +320,229 @@ func (r *PackageSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	case int(readyClusters) == len(selected):
 		cond.Status, cond.Reason, cond.Message = metav1.ConditionTrue, "AllReady", fmt.Sprintf("%d of %d clusters ready", readyClusters, len(selected))
 	default:
-		cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "Progressing", fmt.Sprintf("%d of %d clusters ready", readyClusters, len(selected))
+		cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "Progressing", fmt.Sprintf("%d of %d clusters ready, %d updated", readyClusters, len(selected), updatedClusters)
 	}
 	meta.SetStatusCondition(&set.Status.Conditions, cond)
+	pc := metav1.Condition{Type: "RolloutPaused", Status: metav1.ConditionFalse, Reason: "Rolling", ObservedGeneration: set.Generation}
+	if paused {
+		pc.Status, pc.Reason, pc.Message = metav1.ConditionTrue, "ClusterFailed", "stopped after a failure on "+failedOn+"; change the set to go on"
+	}
+	meta.SetStatusCondition(&set.Status.Conditions, pc)
 	if err := r.Status().Update(ctx, set); err != nil && !apierrors.IsConflict(err) {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: fleetRequeue}, nil
 }
 
-// apply writes the set to one cluster and counts its ready packages.
-func (r *PackageSetReconciler) apply(ctx context.Context, set *v1alpha1.PackageSet, c *v1alpha1.Cluster, wanted, wantedRepos map[string]bool) v1alpha1.PackageSetClusterStatus {
-	st := v1alpha1.PackageSetClusterStatus{Name: c.Name, Total: int32(len(set.Spec.Packages))}
+// firstLine keeps a status message short: its first line, cut at max.
+func firstLine(s string, max int) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
+}
+
+// failedReasons are package conditions that end a change badly.
+var failedReasons = map[string]bool{v1alpha1.ReasonUpgradeFailed: true, v1alpha1.ReasonUpgradeRolledBack: true}
+
+// observe reads what the set has on one cluster.
+func (r *PackageSetReconciler) observe(ctx context.Context, set *v1alpha1.PackageSet, c *v1alpha1.Cluster, change string) *memberState {
+	st := &memberState{cluster: c, status: v1alpha1.PackageSetClusterStatus{Name: c.Name, Total: int32(len(set.Spec.Packages))}}
 	m, err := r.Members.For(ctx, c)
 	if err != nil {
-		st.Message = err.Error()
+		st.status.Message = err.Error()
 		return st
 	}
-	var problems []string
+	st.member = m
+	sel := client.MatchingLabels{v1alpha1.LabelPackageSet: set.Name}
+	var pkgs v1alpha1.PackageList
+	var repos v1alpha1.RepositoryList
+	if err := m.Client.List(ctx, &pkgs, sel); err != nil {
+		st.status.Message = err.Error()
+		return st
+	}
+	if err := m.Client.List(ctx, &repos, sel); err != nil {
+		st.status.Message = err.Error()
+		return st
+	}
+	carries := map[string]bool{}
+	for _, rp := range repos.Items {
+		carries["repository/"+rp.Name] = rp.Annotations[v1alpha1.AnnotationPackageSetChange] == change
+	}
+	byName := map[string]v1alpha1.Package{}
+	for _, p := range pkgs.Items {
+		carries["package/"+p.Name] = p.Annotations[v1alpha1.AnnotationPackageSetChange] == change
+		byName[p.Name] = p
+	}
+	st.updated = true
 	for _, rp := range set.Spec.Repositories {
+		st.updated = st.updated && carries["repository/"+rp.Name]
+	}
+	var notReady []string
+	for _, sp := range set.Spec.Packages {
+		st.updated = st.updated && carries["package/"+sp.Name]
+		p, ok := byName[sp.Name]
+		if !ok {
+			notReady = append(notReady, sp.Name)
+			continue
+		}
+		if p.Status.Version != "" {
+			if st.status.Versions == nil {
+				st.status.Versions = map[string]string{}
+			}
+			st.status.Versions[p.Name] = p.Status.Version
+		}
+		cond := meta.FindStatusCondition(p.Status.Conditions, "Ready")
+		current := cond != nil && cond.ObservedGeneration == p.Generation
+		switch {
+		case current && cond.Status == metav1.ConditionTrue:
+			st.status.Ready++
+		case current && failedReasons[cond.Reason]:
+			st.failed = true
+			if st.failure == "" {
+				st.failure = p.Name + ": " + firstLine(cond.Message, 200)
+			}
+			notReady = append(notReady, p.Name)
+		default:
+			notReady = append(notReady, p.Name)
+		}
+	}
+	st.status.Updated = st.updated
+	st.done = st.updated && len(notReady) == 0
+	if len(notReady) > 0 {
+		sort.Strings(notReady)
+		st.status.Message = "not ready: " + strings.Join(notReady, ", ")
+	}
+	return st
+}
+
+// write puts the set's current change on one cluster and drops what the
+// set no longer wants there.
+func (r *PackageSetReconciler) write(ctx context.Context, set *v1alpha1.PackageSet, st *memberState, change string, sets []v1alpha1.PackageSet) []string {
+	c := st.member.Client
+	var problems []string
+	wanted, wantedRepos := map[string]bool{}, map[string]bool{}
+	for _, rp := range set.Spec.Repositories {
+		wantedRepos[rp.Name] = true
 		obj := &v1alpha1.Repository{ObjectMeta: metav1.ObjectMeta{Name: rp.Name}}
-		if err := writeManaged(ctx, m.Client, set.Name, obj, func() { obj.Spec = *rp.Spec.DeepCopy() }); err != nil {
+		if err := writeManaged(ctx, c, set.Name, change, obj, r.mayTakeOver(sets, st.cluster, "repository", rp.Name), func() { obj.Spec = *rp.Spec.DeepCopy() }); err != nil {
 			problems = append(problems, "repository "+rp.Name+": "+err.Error())
 		}
 	}
 	for _, p := range set.Spec.Packages {
+		wanted[p.Name] = true
 		obj := &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: p.Name}}
-		if err := writeManaged(ctx, m.Client, set.Name, obj, func() { obj.Spec = *p.Spec.DeepCopy() }); err != nil {
+		if err := writeManaged(ctx, c, set.Name, change, obj, r.mayTakeOver(sets, st.cluster, "package", p.Name), func() { obj.Spec = *p.Spec.DeepCopy() }); err != nil {
 			problems = append(problems, "package "+p.Name+": "+err.Error())
 		}
 	}
-	if err := r.cleanup(ctx, set, c, wanted, wantedRepos); err != nil {
+	if err := r.cleanup(ctx, set, st.cluster, wanted, wantedRepos, sets); err != nil {
 		problems = append(problems, err.Error())
 	}
-	var pkgs v1alpha1.PackageList
-	if err := m.Client.List(ctx, &pkgs, client.MatchingLabels{v1alpha1.LabelPackageSet: set.Name}); err != nil {
-		problems = append(problems, err.Error())
-	}
-	var notReady []string
-	for _, p := range pkgs.Items {
-		if !wanted[p.Name] {
-			continue
-		}
-		if isReady(p.Status.Conditions) {
-			st.Ready++
-		} else {
-			notReady = append(notReady, p.Name)
-		}
-	}
-	if len(problems) == 0 && len(notReady) > 0 {
-		sort.Strings(notReady)
-		st.Message = "not ready: " + strings.Join(notReady, ", ")
-	}
-	if len(problems) > 0 {
-		st.Message = strings.Join(problems, "; ")
-	}
-	return st
+	return problems
 }
 
 // ErrNotManaged is returned for an object the set did not create.
 var ErrNotManaged = fmt.Errorf("exists and is not managed by this set; left alone")
 
-// writeManaged creates or updates an object the set manages, refusing
-// one created by somebody else.
-func writeManaged(ctx context.Context, c client.Client, set string, obj client.Object, mutate func()) error {
+// writeManaged creates or updates an object the set manages. It refuses
+// an object made by hand, and one another set manages unless takeOver
+// says that set no longer wants it there.
+func writeManaged(ctx context.Context, c client.Client, set, change string, obj client.Object, takeOver func(owner string) bool, mutate func()) error {
 	err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 	switch {
 	case apierrors.IsNotFound(err):
 		mutate()
 		obj.SetLabels(map[string]string{v1alpha1.LabelPackageSet: set})
+		obj.SetAnnotations(map[string]string{v1alpha1.AnnotationPackageSetChange: change})
 		return c.Create(ctx, obj)
 	case err != nil:
 		return err
-	case obj.GetLabels()[v1alpha1.LabelPackageSet] != set:
+	}
+	owner := obj.GetLabels()[v1alpha1.LabelPackageSet]
+	if owner == "" || (owner != set && !takeOver(owner)) {
 		return ErrNotManaged
 	}
 	mutate()
+	l := obj.GetLabels()
+	l[v1alpha1.LabelPackageSet] = set
+	obj.SetLabels(l)
+	a := obj.GetAnnotations()
+	if a == nil {
+		a = map[string]string{}
+	}
+	a[v1alpha1.AnnotationPackageSetChange] = change
+	obj.SetAnnotations(a)
 	return c.Update(ctx, obj)
 }
 
-// cleanup deletes what the set wrote to a cluster and no longer wants:
-// everything when wanted is nil.
-func (r *PackageSetReconciler) cleanup(ctx context.Context, set *v1alpha1.PackageSet, c *v1alpha1.Cluster, wanted, wantedRepos map[string]bool) error {
+// claimant names another set that selects the cluster and wants an object
+// of kind (package or repository) and name there, or "".
+func claimant(sets []v1alpha1.PackageSet, cluster *v1alpha1.Cluster, kind, name, except string) string {
+	for _, s := range sets {
+		if s.Name == except || !s.DeletionTimestamp.IsZero() {
+			continue
+		}
+		sel, err := metav1.LabelSelectorAsSelector(&s.Spec.ClusterSelector)
+		if err != nil || !sel.Matches(labels.Set(cluster.Labels)) {
+			continue
+		}
+		if kind == "package" {
+			for _, p := range s.Spec.Packages {
+				if p.Name == name {
+					return s.Name
+				}
+			}
+		} else {
+			for _, rp := range s.Spec.Repositories {
+				if rp.Name == name {
+					return s.Name
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// mayTakeOver lets a set take an object another set no longer wants on
+// the cluster, so a cluster moving between sets keeps what both carry.
+func (r *PackageSetReconciler) mayTakeOver(sets []v1alpha1.PackageSet, cluster *v1alpha1.Cluster, kind, name string) func(string) bool {
+	return func(owner string) bool {
+		for _, s := range sets {
+			if s.Name == owner {
+				return claimant([]v1alpha1.PackageSet{s}, cluster, kind, name, "") == ""
+			}
+		}
+		return true // the owner set is gone
+	}
+}
+
+// cleanup removes what the set wrote to a cluster and no longer wants,
+// everything when wanted is nil. An object another set wants there is
+// handed to that set instead: it keeps running and moves on with that
+// set's own rollout.
+func (r *PackageSetReconciler) cleanup(ctx context.Context, set *v1alpha1.PackageSet, c *v1alpha1.Cluster, wanted, wantedRepos map[string]bool, sets []v1alpha1.PackageSet) error {
 	m, err := r.Members.For(ctx, c)
 	if err != nil {
 		return err
+	}
+	release := func(obj client.Object, kind string) error {
+		if other := claimant(sets, c, kind, obj.GetName(), set.Name); other != "" {
+			l := obj.GetLabels()
+			l[v1alpha1.LabelPackageSet] = other
+			obj.SetLabels(l)
+			a := obj.GetAnnotations()
+			delete(a, v1alpha1.AnnotationPackageSetChange)
+			obj.SetAnnotations(a)
+			return m.Client.Update(ctx, obj)
+		}
+		if err := m.Client.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		return nil
 	}
 	sel := client.MatchingLabels{v1alpha1.LabelPackageSet: set.Name}
 	var pkgs v1alpha1.PackageList
@@ -332,7 +551,7 @@ func (r *PackageSetReconciler) cleanup(ctx context.Context, set *v1alpha1.Packag
 	}
 	for i := range pkgs.Items {
 		if !wanted[pkgs.Items[i].Name] {
-			if err := m.Client.Delete(ctx, &pkgs.Items[i]); err != nil && !apierrors.IsNotFound(err) {
+			if err := release(&pkgs.Items[i], "package"); err != nil {
 				return err
 			}
 		}
@@ -343,7 +562,7 @@ func (r *PackageSetReconciler) cleanup(ctx context.Context, set *v1alpha1.Packag
 	}
 	for i := range repos.Items {
 		if !wantedRepos[repos.Items[i].Name] {
-			if err := m.Client.Delete(ctx, &repos.Items[i]); err != nil && !apierrors.IsNotFound(err) {
+			if err := release(&repos.Items[i], "repository"); err != nil {
 				return err
 			}
 		}
@@ -407,5 +626,7 @@ func (r *PackageSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named("kubepkg-package-set").
 		For(&v1alpha1.PackageSet{}).
 		Watches(&v1alpha1.Cluster{}, allSets).
+		// A set that drops a cluster or package may hand objects to another.
+		Watches(&v1alpha1.PackageSet{}, allSets).
 		Complete(r)
 }
