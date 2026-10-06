@@ -98,9 +98,14 @@ sleep 20
 [[ "$(revisions demo)" == "1:1.0.0:Superseded 2:1.1.0:Failed 3:1.0.0:Applied " ]] || fail "operator retried a held package: $(revisions demo)"
 
 step "4. fix forward to 1.2.0"
+# An operator-like field manager takes over a field the chart sets; the
+# upgrade must still apply the chart's value instead of failing on a
+# server-side apply conflict.
+${K} -n e2e-demo annotate deploy web e2e.kubepkg.dev/domain=taken-over --overwrite --field-manager=intruder >/dev/null
 demo_source 1.2.0 v3
 wait_reason demo ReconciliationSucceeded
 [[ "$(image_of e2e-demo web)" == registry.k8s.io/pause:3.9 ]] || fail "web image after fix"
+[[ "$(${K} -n e2e-demo get deploy web -o jsonpath='{.metadata.annotations.e2e\.kubepkg\.dev/domain}')" == e2e.example ]] || fail "the upgrade did not take back a field another manager had changed"
 echo "  revisions: $(revisions demo)"
 
 step "5. a dependent package waits for its requirement, then installs"
