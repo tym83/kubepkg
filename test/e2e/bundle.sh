@@ -48,7 +48,7 @@ spec:
   charts: {web: {from: [web]}}
   package:
     rollback: {safe: true}
-IMAGES
+    # IMAGES
     variants:
       - name: default
         components: [{name: web, path: web, install: {namespace: e2e-web}}]
@@ -59,7 +59,7 @@ pinned=$("${KP[@]}" images "${WORK}/recipes/web")
 python3 - "${WORK}/recipes/web/recipe.yaml" "${pinned}" <<'EOF'
 import sys
 p, block = sys.argv[1], sys.argv[2]
-s = open(p).read().replace("IMAGES", block)
+s = open(p).read().replace("    # IMAGES", block)
 open(p, "w").write(s)
 EOF
 "${KP[@]}" validate "${WORK}/recipes/web" >/dev/null || fail "a recipe with pinned images does not validate"
