@@ -101,7 +101,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	recordRepository(rp, true)
 	meta.SetStatusCondition(&rp.Status.Conditions, metav1.Condition{
 		Type: "Ready", Status: metav1.ConditionTrue, Reason: "IndexLoaded",
-		Message: fmt.Sprintf("%d packages", len(idx.Packages)), ObservedGeneration: rp.Generation,
+		Message: repositoryMessage(idx), ObservedGeneration: rp.Generation,
 	})
 	if err := r.Status().Update(ctx, rp); err != nil && !apierrors.IsConflict(err) {
 		return ctrl.Result{}, err
@@ -234,4 +234,12 @@ func allPackages(c client.Client) handler.EventHandler {
 		}
 		return out
 	})
+}
+
+func repositoryMessage(idx *repo.Index) string {
+	msg := fmt.Sprintf("%d packages", len(idx.Packages))
+	if n := len(idx.Unknown); n > 0 {
+		msg += fmt.Sprintf("; %d versions need a newer kubepkg and are left out", n)
+	}
+	return msg
 }

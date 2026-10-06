@@ -139,3 +139,38 @@ func TestCatalogFollowsShadowing(t *testing.T) {
 		t.Errorf("refused versions listed: %+v", cat["kubevirt"])
 	}
 }
+
+func TestVersionsFromANewerKubepkgAreLeftOutNotFatal(t *testing.T) {
+	good := v1beta1.PackageSourceSpec{Version: "1.0.0"}
+	d, err := SpecDigest(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := func(second string) []byte {
+		return []byte(`apiVersion: kubepkg.dev/v1alpha1
+kind: RepositoryIndex
+packages:
+  app:
+    versions:
+      - version: 1.1.0
+        digest: sha256:` + strings.Repeat("1", 64) + `
+        spec: {version: 1.1.0, ` + second + `}
+      - version: 1.0.0
+        digest: ` + d + `
+        spec: {version: 1.0.0}
+`)
+	}
+	idx, err := Parse(index("someFieldFromTheFuture: {enabled: true}"))
+	if err != nil {
+		t.Fatalf("a version built for a newer kubepkg broke the index: %v", err)
+	}
+	if v := idx.Packages["app"].Versions; len(v) != 1 || v[0].Version != "1.0.0" || len(idx.Unknown) != 1 {
+		t.Fatalf("versions %+v, unknown %v", v, idx.Unknown)
+	}
+	if _, err := Parse(index("provides: [forged]")); err == nil || !strings.Contains(err.Error(), "does not match its digest") {
+		t.Fatalf("a forged spec of known fields: %v", err)
+	}
+	if _, err := Build(context.Background(), t.TempDir(), nil, BuildOptions{Base: idx}); err == nil || !strings.Contains(err.Error(), "newer kubepkg") {
+		t.Fatalf("merging would drop versions from the published index: %v", err)
+	}
+}
