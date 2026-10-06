@@ -1,4 +1,11 @@
-{{- if .Values.metrics.service }}
+{{- /* Defaults here too: helm upgrade --reuse-values from a chart without
+these settings leaves .Values.metrics empty. */ -}}
+{{- $defaults := dict "service" true
+      "serviceMonitor" (dict "enabled" false "interval" "30s" "labels" dict)
+      "prometheusRule" (dict "enabled" false "labels" dict "indexMaxAge" "168h")
+      "dashboard" (dict "enabled" false "labels" (dict "grafana_dashboard" "1")) }}
+{{- $m := mustMergeOverwrite $defaults (deepCopy (.Values.metrics | default dict)) }}
+{{- if $m.service }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -10,7 +17,7 @@ spec:
   ports:
     - {name: metrics, port: 8080, targetPort: metrics}
 {{- end }}
-{{- if .Values.metrics.serviceMonitor.enabled }}
+{{- if $m.serviceMonitor.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -19,15 +26,15 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kubepkg.labels" . | nindent 4 }}
-    {{- with .Values.metrics.serviceMonitor.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+    {{- with $m.serviceMonitor.labels }}{{ toYaml . | nindent 4 }}{{ end }}
 spec:
   selector:
     matchLabels: {{- include "kubepkg.selector" . | nindent 6 }}
   endpoints:
     - port: metrics
-      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      interval: {{ $m.serviceMonitor.interval }}
 {{- end }}
-{{- if .Values.metrics.prometheusRule.enabled }}
+{{- if $m.prometheusRule.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -36,7 +43,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kubepkg.labels" . | nindent 4 }}
-    {{- with .Values.metrics.prometheusRule.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+    {{- with $m.prometheusRule.labels }}{{ toYaml . | nindent 4 }}{{ end }}
 spec:
   groups:
     - name: kubepkg
@@ -60,10 +67,10 @@ spec:
           annotations:
             summary: "Repository {{ "{{ $labels.repository }}" }} cannot be loaded or was refused"
         - alert: KubepkgRepositoryStale
-          expr: time() - max by (repository) (kubepkg_repository_index_generated_timestamp_seconds) > {{ include "kubepkg.seconds" .Values.metrics.prometheusRule.indexMaxAge }}
+          expr: time() - max by (repository) (kubepkg_repository_index_generated_timestamp_seconds) > {{ include "kubepkg.seconds" $m.prometheusRule.indexMaxAge }}
           labels: {severity: info}
           annotations:
-            summary: "The index of {{ "{{ $labels.repository }}" }} has not changed for over {{ .Values.metrics.prometheusRule.indexMaxAge }}"
+            summary: "The index of {{ "{{ $labels.repository }}" }} has not changed for over {{ $m.prometheusRule.indexMaxAge }}"
         - alert: KubepkgReconcileErrors
           expr: sum by (controller) (rate(controller_runtime_reconcile_errors_total{controller=~"kubepkg-.*"}[15m])) > 0
           for: 15m
@@ -71,7 +78,7 @@ spec:
           annotations:
             summary: "The kubepkg {{ "{{ $labels.controller }}" }} controller keeps failing to reconcile"
 {{- end }}
-{{- if .Values.metrics.dashboard.enabled }}
+{{- if $m.dashboard.enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -80,7 +87,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kubepkg.labels" . | nindent 4 }}
-    {{- with .Values.metrics.dashboard.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+    {{- with $m.dashboard.labels }}{{ toYaml . | nindent 4 }}{{ end }}
 data:
   kubepkg.json: |-
 {{ .Files.Get "files/dashboards/kubepkg.json" | indent 4 }}

@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # release tags, for the chart upgrade check
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -25,6 +27,8 @@ jobs:
       - run: go test ./...
       - uses: azure/setup-helm@v4
       - run: helm lint charts/kubepkg
+      - name: The chart upgrades with --reuse-values from every release
+        run: hack/chart-old-values.sh
       - name: Alert rules are valid
         run: |
           curl -fsSL https://github.com/prometheus/prometheus/releases/download/v3.15.0/prometheus-3.15.0.linux-amd64.tar.gz \

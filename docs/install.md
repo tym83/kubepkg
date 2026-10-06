@@ -103,8 +103,10 @@ The CLI uses your kubeconfig. `--context` selects a context, and `--api-group` m
 ## Upgrading kubepkg
 
 ```bash
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reuse-values --version <new>
+helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reset-then-reuse-values --version <new>
 ```
+
+`--reset-then-reuse-values` (Helm 3.14 and newer) keeps your settings and takes the new chart's defaults for settings it adds. Plain `--reuse-values` also works: every setting the chart has added since v0.1.0 has its default in the templates too, and CI renders the chart with the values of every earlier release to keep it that way.
 
 The chart upgrades the CRDs together with the operator. Installed packages stay as they are. The new operator adopts their current revisions without creating new ones, unless something the packages depend on has actually changed.
 
