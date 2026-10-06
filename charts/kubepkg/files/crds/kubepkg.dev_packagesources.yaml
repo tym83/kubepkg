@@ -82,6 +82,16 @@ spec:
                 items:
                   type: string
                 type: array
+              images:
+                description: |-
+                  Images are the container images the package runs, each pinned by
+                  digest: registry/repository:tag@sha256:..., including those an
+                  operator in the package deploys on its own. A signed index covers
+                  them like the charts, and kubepkg bundle copies them for
+                  air-gapped clusters.
+                items:
+                  type: string
+                type: array
               permissions:
                 description: |-
                   Permissions declares what the package needs in the cluster. It is shown

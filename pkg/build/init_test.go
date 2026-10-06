@@ -197,3 +197,59 @@ dependencies:
 		t.Fatalf("CRDs = %v, want %s", got, want)
 	}
 }
+
+func TestValidateChecksPinnedImages(t *testing.T) {
+	d := "@sha256:" + strings.Repeat("c", 64)
+	write := func(images string) string {
+		dir := t.TempDir()
+		files := map[string]string{
+			"charts/app/Chart.yaml":            "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+			"charts/app/templates/deploy.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: app}\nspec:\n  template:\n    spec:\n      containers: [{name: app, image: ghcr.io/org/app:1.0}]\n",
+			RecipeFile: `apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: app
+  annotations: {kubepkg.dev/description: an app}
+spec:
+  version: 1.0.0
+  build: 1
+  sources: {app: {dir: charts/app}}
+  charts: {app: {from: [app]}}
+  package:
+    rollback: {safe: true}
+` + images + `
+    variants: [{name: default, components: [{name: app, path: app, install: {namespace: app}}]}]
+`,
+		}
+		for n, body := range files {
+			p := filepath.Join(dir, n)
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	ctx := context.Background()
+	for name, tc := range map[string]struct {
+		images   string
+		errors   string
+		warnings string
+	}{
+		"pinned":       {images: "    images: [ghcr.io/org/app:1.0" + d + ", ghcr.io/org/operand:2.0" + d + "]"},
+		"none":         {warnings: "package.images is empty"},
+		"not rendered": {images: "    images: [ghcr.io/org/other:1.0" + d + "]", errors: "the charts run ghcr.io/org/app:1.0, which package.images does not pin"},
+		"no digest":    {images: "    images: [ghcr.io/org/app:1.0]", errors: "must be in full form with a digest"},
+	} {
+		rep := Validate(ctx, write(tc.images), opts(t))
+		errs, warns := strings.Join(rep.Errors, "\n"), strings.Join(rep.Warnings, "\n")
+		if (tc.errors == "") != (errs == "") || !strings.Contains(errs, tc.errors) {
+			t.Errorf("%s: errors %q, want %q", name, errs, tc.errors)
+		}
+		if tc.warnings != "" && !strings.Contains(warns, tc.warnings) {
+			t.Errorf("%s: warnings %q, want %q", name, warns, tc.warnings)
+		}
+	}
+}

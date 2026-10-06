@@ -64,14 +64,34 @@ Show the revisions of a package
 kubepkg history <package>
 ```
 
+## kubepkg images
+
+Print the images a recipe's package runs, pinned by digest
+
+Images builds the recipe without publishing it, finds the images its
+charts run with their default values, adds those package.images already
+lists (images an operator deploys on its own appear in no chart), pins
+every one by the digest its tag points at now, and prints the
+package.images block to paste into the recipe. Images already pinned keep
+their digests; a published version whose images change needs a new build
+number.
+
+```text
+kubepkg images <recipe-dir> [flags]
+
+      --plain-http               talk to registries without TLS (local registries only)
+      --registry-config string   Docker config file with registry credentials
+```
+
 ## kubepkg init
 
 Start a recipe from an upstream chart or release manifests
 
 Init writes <dir>/recipe.yaml with every source pinned: it downloads the
 upstream to compute digests, takes the description from the chart, drops
-Namespaces from manifests, and lists the CRDs they ship. Review it, then
-run "kubepkg validate".
+Namespaces from manifests, lists the CRDs they ship, and pins the images
+they run by their current digests. Review it, add images an operator in
+the package deploys on its own, then run "kubepkg validate".
 
   kubepkg init recipes/cert-manager --chart https://charts.jetstack.io/cert-manager@v1.21.2
   kubepkg init recipes/kubevirt --version 1.9.0 \\
@@ -80,13 +100,15 @@ run "kubepkg validate".
 ```text
 kubepkg init <dir> [flags]
 
-      --chart string           upstream chart, <repository>/<name>@<version>, e.g. oci://ghcr.io/org/charts/app@1.2.3
-      --description string     one line about the package (default: the chart's)
-      --manifest stringArray   URL of upstream release manifests (repeatable)
-      --name string            package name (default: the directory name)
-      --namespace string       install namespace (default: the package name)
-      --plain-http             talk to registries without TLS (local registries only)
-      --version string         upstream version (default: the chart's appVersion)
+      --chart string             upstream chart, <repository>/<name>@<version>, e.g. oci://ghcr.io/org/charts/app@1.2.3
+      --description string       one line about the package (default: the chart's)
+      --manifest stringArray     URL of upstream release manifests (repeatable)
+      --name string              package name (default: the directory name)
+      --namespace string         install namespace (default: the package name)
+      --no-images                do not pin images (no registry access); fill package.images later with kubepkg images
+      --plain-http               talk to registries without TLS (local registries only)
+      --registry-config string   Docker config file with registry credentials, for pinning private images
+      --version string           upstream version (default: the chart's appVersion)
 ```
 
 ## kubepkg install

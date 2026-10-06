@@ -110,6 +110,14 @@ type PackageSourceSpec struct {
 	// Each variant defines components, applications, dependencies, and libraries for a specific configuration
 	// +optional
 	Variants []Variant `json:"variants,omitempty"`
+
+	// Images are the container images the package runs, each pinned by
+	// digest: registry/repository:tag@sha256:..., including those an
+	// operator in the package deploys on its own. A signed index covers
+	// them like the charts, and kubepkg bundle copies them for
+	// air-gapped clusters.
+	// +optional
+	Images []string `json:"images,omitempty"`
 }
 
 // Permissions declares the access a package needs.

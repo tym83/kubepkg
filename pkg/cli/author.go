@@ -26,6 +26,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tym83/kubepkg/pkg/build"
+	"github.com/tym83/kubepkg/pkg/images"
 	"github.com/tym83/kubepkg/pkg/source"
 )
 
@@ -39,17 +40,20 @@ func userCacheFetcher(plainHTTP bool) (*source.Fetcher, error) {
 
 func initCmd() *cobra.Command {
 	var (
-		in        build.InitInput
-		chart     string
-		plainHTTP bool
+		in             build.InitInput
+		chart          string
+		plainHTTP      bool
+		noImages       bool
+		registryConfig string
 	)
 	cmd := &cobra.Command{
 		Use:   "init <dir>",
 		Short: "Start a recipe from an upstream chart or release manifests",
 		Long: `Init writes <dir>/recipe.yaml with every source pinned: it downloads the
 upstream to compute digests, takes the description from the chart, drops
-Namespaces from manifests, and lists the CRDs they ship. Review it, then
-run "kubepkg validate".
+Namespaces from manifests, lists the CRDs they ship, and pins the images
+they run by their current digests. Review it, add images an operator in
+the package deploys on its own, then run "kubepkg validate".
 
   kubepkg init recipes/cert-manager --chart https://charts.jetstack.io/cert-manager@v1.21.2
   kubepkg init recipes/kubevirt --version 1.9.0 \\
@@ -71,6 +75,9 @@ run "kubepkg validate".
 			if err != nil {
 				return err
 			}
+			if !noImages {
+				in.Images = &images.Resolver{CredentialsFile: registryConfig, PlainHTTP: plainHTTP}
+			}
 			if err := build.Init(cmd.Context(), args[0], in, f); err != nil {
 				return err
 			}
@@ -85,6 +92,83 @@ run "kubepkg validate".
 	cmd.Flags().StringVar(&in.Namespace, "namespace", "", "install namespace (default: the package name)")
 	cmd.Flags().StringVar(&in.Description, "description", "", "one line about the package (default: the chart's)")
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "talk to registries without TLS (local registries only)")
+	cmd.Flags().BoolVar(&noImages, "no-images", false, "do not pin images (no registry access); fill package.images later with kubepkg images")
+	cmd.Flags().StringVar(&registryConfig, "registry-config", "", "Docker config file with registry credentials, for pinning private images")
+	return cmd
+}
+
+func imagesCmd() *cobra.Command {
+	var (
+		plainHTTP      bool
+		registryConfig string
+	)
+	cmd := &cobra.Command{
+		Use:   "images <recipe-dir>",
+		Short: "Print the images a recipe's package runs, pinned by digest",
+		Long: `Images builds the recipe without publishing it, finds the images its
+charts run with their default values, adds those package.images already
+lists (images an operator deploys on its own appear in no chart), pins
+every one by the digest its tag points at now, and prints the
+package.images block to paste into the recipe. Images already pinned keep
+their digests; a published version whose images change needs a new build
+number.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			f, err := userCacheFetcher(plainHTTP)
+			if err != nil {
+				return err
+			}
+			work, err := os.MkdirTemp("", "kubepkg-images-")
+			if err != nil {
+				return err
+			}
+			defer os.RemoveAll(work)
+			res, err := build.Build(cmd.Context(), args[0], build.Options{Fetcher: f, WorkDir: work})
+			if err != nil {
+				return err
+			}
+			running, err := build.RenderedImages(res)
+			if err != nil {
+				return err
+			}
+			r := images.Resolver{CredentialsFile: registryConfig, PlainHTTP: plainHTTP}
+			listed := res.Recipe.Spec.Package.Images
+			var out []string
+			seen := map[string]bool{}
+			add := func(ref string) error {
+				p, err := r.Pin(cmd.Context(), ref)
+				if err != nil {
+					return err
+				}
+				if !seen[p] {
+					seen[p] = true
+					out = append(out, p)
+				}
+				return nil
+			}
+			for _, ref := range listed {
+				if err := add(ref); err != nil {
+					return err
+				}
+			}
+			for _, ref := range running {
+				if !images.Covered(ref, out) {
+					if err := add(ref); err != nil {
+						return err
+					}
+				}
+			}
+			sort.Strings(out)
+			w := cmd.OutOrStdout()
+			fmt.Fprintln(w, "    images:")
+			for _, ref := range out {
+				fmt.Fprintf(w, "      - %s\n", ref)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "talk to registries without TLS (local registries only)")
+	cmd.Flags().StringVar(&registryConfig, "registry-config", "", "Docker config file with registry credentials")
 	return cmd
 }
 

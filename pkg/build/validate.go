@@ -30,6 +30,7 @@ import (
 	"helm.sh/helm/v4/pkg/engine"
 	"sigs.k8s.io/yaml"
 
+	"github.com/tym83/kubepkg/pkg/images"
 	"github.com/tym83/kubepkg/pkg/repo"
 )
 
@@ -90,12 +91,57 @@ func Validate(ctx context.Context, dir string, opts Options) Report {
 			rep.Warnings = append(rep.Warnings, fmt.Sprintf("package.crds declares %s, which no chart ships (fine if an operator in the package creates it)", c))
 		}
 	}
+	checkImages(res, &rep)
 	return rep
 }
 
-// chartCRDs lists the CRDs a chart installs with its default values, from
-// its templates and its crds/ directory.
-func chartCRDs(dir string) ([]string, error) {
+// checkImages compares the images the charts run with package.images.
+func checkImages(res *Result, rep *Report) {
+	pinned := res.Recipe.Spec.Package.Images
+	for _, p := range pinned {
+		if n, err := images.Normalize(p); err != nil {
+			rep.Errors = append(rep.Errors, err.Error())
+		} else if n != p || !images.Pinned(p) {
+			rep.Errors = append(rep.Errors, fmt.Sprintf("package.images entry %s must be in full form with a digest, like %s@sha256:...; kubepkg images prints them", p, n))
+		}
+	}
+	running, err := RenderedImages(res)
+	if err != nil {
+		rep.Warnings = append(rep.Warnings, fmt.Sprintf("images were not checked: %v", err))
+		return
+	}
+	if len(pinned) == 0 {
+		if len(running) > 0 {
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("package.images is empty, so the %d images the charts run are not pinned or signed and kubepkg bundle has to guess them; kubepkg images prints the list", len(running)))
+		}
+		return
+	}
+	for _, img := range running {
+		if !images.Covered(img, pinned) {
+			rep.Errors = append(rep.Errors, fmt.Sprintf("the charts run %s, which package.images does not pin", img))
+		}
+	}
+}
+
+// RenderedImages lists the images the built charts run with their default
+// values. Images an operator in the package deploys on its own do not
+// appear in any chart; package.images lists them by hand.
+func RenderedImages(res *Result) ([]string, error) {
+	var docs []string
+	for _, name := range sortedKeys(res.Recipe.Spec.Charts) {
+		d, err := renderChart(filepath.Join(res.TreeDir, name))
+		if err != nil {
+			return nil, fmt.Errorf("chart %s does not render with its default values: %w", name, err)
+		}
+		docs = append(docs, d...)
+	}
+	return images.FromManifests(docs...)
+}
+
+// renderChart renders a chart with its default values, as helm install
+// would, and returns the documents it installs: templates of the chart
+// and its enabled subcharts, and their crds/ directories.
+func renderChart(dir string) ([]string, error) {
 	loaded, err := loader.Load(dir)
 	if err != nil {
 		return nil, err
@@ -125,6 +171,20 @@ func chartCRDs(dir string) ([]string, error) {
 	for _, crd := range ch.CRDObjects() {
 		docs = append(docs, string(crd.File.Data))
 	}
+	return docs, nil
+}
+
+// chartCRDs lists the CRDs a chart installs with its default values.
+func chartCRDs(dir string) ([]string, error) {
+	docs, err := renderChart(dir)
+	if err != nil {
+		return nil, err
+	}
+	return crdNames(docs)
+}
+
+// crdNames lists the CRDs among rendered documents.
+func crdNames(docs []string) ([]string, error) {
 	seen := map[string]bool{}
 	for _, text := range docs {
 		for _, doc := range docSeparator.Split(text, -1) {
