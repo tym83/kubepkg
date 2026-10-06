@@ -305,6 +305,14 @@ func (b *Backend) Uninstall(ctx context.Context, c backend.Component) error {
 	if err := b.Client.Delete(ctx, hr); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
+	// The helm controller uninstalls the release before the HelmRelease
+	// goes; its source must stay until then.
+	switch err := b.Client.Get(ctx, client.ObjectKeyFromObject(hr), &helmv2.HelmRelease{}); {
+	case err == nil:
+		return backend.ErrUninstalling
+	case !apierrors.IsNotFound(err):
+		return err
+	}
 	for _, kind := range []string{"OCIRepository", "HelmRepository"} {
 		u := &unstructured.Unstructured{}
 		u.SetAPIVersion(sourceAPIVersion)

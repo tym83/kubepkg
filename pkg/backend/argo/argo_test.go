@@ -18,6 +18,7 @@ package argo
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -103,16 +104,23 @@ func TestApplyWritesAnApplication(t *testing.T) {
 		t.Errorf("not updated: %v", got)
 	}
 
-	if err := b.Uninstall(ctx, c); err != nil {
-		t.Fatal(err)
-	}
 	// The finalizer keeps the Application until Argo CD has removed what
-	// it deployed.
+	// it deployed; until then the component is still being removed.
+	if err := b.Uninstall(ctx, c); !errors.Is(err, backend.ErrUninstalling) {
+		t.Fatalf("uninstall while Argo CD removes the resources: %v", err)
+	}
 	if err := b.Client.Get(ctx, appKey(app), app); err != nil {
 		t.Fatal(err)
 	}
 	if app.GetDeletionTimestamp() == nil {
 		t.Fatal("Application not being deleted")
+	}
+	app.SetFinalizers(nil) // what Argo CD does once it is done
+	if err := b.Client.Update(ctx, app); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Uninstall(ctx, c); err != nil {
+		t.Fatalf("uninstall once the Application is gone: %v", err)
 	}
 }
 

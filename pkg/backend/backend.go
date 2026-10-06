@@ -24,6 +24,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -65,6 +66,11 @@ type Component struct {
 	HealthCheckExprs []kustomize.CustomHealthCheck
 	Timeout          time.Duration
 }
+
+// ErrUninstalling is returned by Uninstall while the delivery tool is
+// still removing what it deployed; the operator asks again later and
+// removes nothing else meanwhile.
+var ErrUninstalling = errors.New("still being removed")
 
 // Chart is one version of a published Helm chart.
 type Chart struct {

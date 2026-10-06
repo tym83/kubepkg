@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/source"
 )
 
@@ -74,7 +76,8 @@ func (r *PackageReconciler) runHooks(ctx context.Context, pkg *v1alpha1.Package,
 // afresh; a hook that is already gone is fine.
 func (r *PackageReconciler) uninstallHooks(ctx context.Context, d *desiredState) {
 	for _, h := range d.hooks {
-		if err := r.Backend.Uninstall(ctx, h.backend); err != nil {
+		// A delivery tool still removing the hook finishes on its own.
+		if err := r.Backend.Uninstall(ctx, h.backend); err != nil && !errors.Is(err, backend.ErrUninstalling) {
 			log.FromContext(ctx).Error(err, "uninstall pre-upgrade hook", "component", h.snapshot.Name)
 		}
 	}
