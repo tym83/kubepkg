@@ -169,14 +169,30 @@ func SignIndex(index, sigFile, privatePEM []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var sigs Signatures
-	if len(strings.TrimSpace(string(sigFile))) > 0 {
-		if err := yaml.Unmarshal(sigFile, &sigs); err != nil || len(sigs.Signatures) == 0 {
-			return nil, errors.New("existing signature file is not a list of signatures")
-		}
+	sigs, err := parseSignatures(sigFile)
+	if err != nil {
+		return nil, err
 	}
 	sigs.Signatures = append(dropSignature(sigs.Signatures, id), Signature{KeyID: id, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, index))})
 	return yaml.Marshal(sigs)
+}
+
+// parseSignatures reads a signature file: a list of signatures, or the
+// plain base64 signature by one key that every kubepkg release reads,
+// which becomes one entry without a key ID.
+func parseSignatures(sigFile []byte) (Signatures, error) {
+	var sigs Signatures
+	text := strings.TrimSpace(string(sigFile))
+	if text == "" {
+		return sigs, nil
+	}
+	if yaml.Unmarshal(sigFile, &sigs) == nil && len(sigs.Signatures) > 0 {
+		return sigs, nil
+	}
+	if _, err := base64.StdEncoding.DecodeString(text); err != nil {
+		return sigs, errors.New("neither a list of signatures nor a plain signature")
+	}
+	return Signatures{Signatures: []Signature{{Sig: text}}}, nil
 }
 
 func dropSignature(sigs []Signature, id string) []Signature {
@@ -197,6 +213,22 @@ func countValid(data []byte, sigs []Signature, keys map[string]string, role Role
 	}
 	seen := map[string]bool{}
 	for _, s := range sigs {
+		if s.KeyID == "" {
+			// A plain signature names no key: it counts for the first
+			// allowed key it verifies with.
+			raw, err := base64.StdEncoding.DecodeString(s.Sig)
+			if err != nil {
+				continue
+			}
+			for _, id := range role.KeyIDs {
+				pub, err := ParsePublicKeys([]string{keys[id]})
+				if err == nil && !seen[id] && ed25519.Verify(pub[0], data, raw) {
+					seen[id] = true
+					break
+				}
+			}
+			continue
+		}
 		if !allowed[s.KeyID] || seen[s.KeyID] {
 			continue
 		}
@@ -282,8 +314,8 @@ func (t *TrustedRoot) VerifyIndex(index, sigFile []byte, idx *Index, now time.Ti
 	if now.After(t.Root.Expires) {
 		return fmt.Errorf("%w: root version %d expired %s", ErrExpired, t.Root.Version, t.Root.Expires.Format(time.RFC3339))
 	}
-	var sigs Signatures
-	if err := yaml.Unmarshal(sigFile, &sigs); err != nil {
+	sigs, err := parseSignatures(sigFile)
+	if err != nil {
 		return fmt.Errorf("%w: signature file: %v", ErrBadSignature, err)
 	}
 	if err := meets(index, sigs.Signatures, t.Root.Keys, t.Root.Roles[RoleIndex], "index"); err != nil {

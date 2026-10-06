@@ -42,3 +42,13 @@ func TestMirrorLocations(t *testing.T) {
 		t.Errorf("no mirror changed %s", got)
 	}
 }
+
+func TestPlainHTTPOnlyForListedHosts(t *testing.T) {
+	f := &Fetcher{PlainHTTP: true, PlainHTTPHosts: []string{"localhost:5001"}}
+	if !f.plainHTTP("localhost:5001") || f.plainHTTP("ghcr.io") {
+		t.Fatal("plain HTTP must reach only the listed registry")
+	}
+	if !(&Fetcher{PlainHTTP: true}).plainHTTP("anything") || (&Fetcher{}).plainHTTP("localhost:5001") {
+		t.Fatal("without a list, the flag applies to every registry, and only when set")
+	}
+}

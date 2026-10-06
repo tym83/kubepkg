@@ -176,7 +176,15 @@ func (b *builder) chart(name string, c Chart, dst string) error {
 		if err := os.Remove(filepath.Join(dst, ".complete")); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-	} else if err := b.wrap(name, paths, c.Exclude, c.Patches, dst); err != nil {
+		if c.CRDsDir {
+			return errors.New("crdsDir is for wrapped manifests; a chart keeps its own layout")
+		}
+		if len(c.Exclude) > 0 || len(c.Patches) > 0 {
+			if err := editChartCRDs(dst, c.Exclude, c.Patches); err != nil {
+				return err
+			}
+		}
+	} else if err := b.wrap(name, paths, c.Exclude, c.Patches, c.CRDsDir, dst); err != nil {
 		return err
 	}
 	if len(c.Values) > 0 {
@@ -210,7 +218,7 @@ func (b *builder) input(with map[string]any, out, chart string) PluginInput {
 }
 
 // wrap makes a chart that applies the manifests in paths, in order.
-func (b *builder) wrap(name string, paths []string, exclude []Selector, patches []Patch, dst string) error {
+func (b *builder) wrap(name string, paths []string, exclude []Selector, patches []Patch, crdsDir bool, dst string) error {
 	matched := make([]bool, len(patches))
 	var files []string
 	for _, p := range paths {
@@ -241,6 +249,21 @@ func (b *builder) wrap(name string, paths []string, exclude []Selector, patches 
 			if raw, err = editObjects(raw, exclude, patches, matched); err != nil {
 				return fmt.Errorf("%s: %w", filepath.Base(f), err)
 			}
+		}
+		if crdsDir {
+			crds, rest, err := splitCRDs(raw)
+			if err != nil {
+				return fmt.Errorf("%s: %w", filepath.Base(f), err)
+			}
+			if len(crds) > 0 {
+				if err := os.MkdirAll(filepath.Join(dst, "crds"), 0o755); err != nil {
+					return err
+				}
+				if err := os.WriteFile(filepath.Join(dst, "crds", fmt.Sprintf("%04d-%s", i, filepath.Base(f))), crds, 0o644); err != nil {
+					return err
+				}
+			}
+			raw = rest
 		}
 		// The index prefix keeps the given order through .Files.Glob,
 		// which sorts by name.
@@ -274,6 +297,120 @@ var docSeparator = regexp.MustCompile(`(?m)^---[ \t]*(#.*)?$`)
 // editObjects drops the documents matching any exclude selector and
 // applies the patches to the ones they match, recording which patches
 // matched. Untouched documents are kept byte for byte.
+// splitCRDs separates the CRDs of a manifest file from everything else.
+func splitCRDs(raw []byte) (crds, rest []byte, err error) {
+	var c, r [][]byte
+	for _, doc := range docSeparator.Split(string(raw), -1) {
+		if strings.TrimSpace(doc) == "" {
+			continue
+		}
+		var head struct {
+			Kind string `json:"kind"`
+		}
+		if err := yaml.Unmarshal([]byte(doc), &head); err != nil {
+			return nil, nil, err
+		}
+		if head.Kind == "CustomResourceDefinition" {
+			c = append(c, []byte(strings.Trim(doc, "\n")))
+		} else {
+			r = append(r, []byte(strings.Trim(doc, "\n")))
+		}
+	}
+	join := func(docs [][]byte) []byte {
+		if len(docs) == 0 {
+			return nil
+		}
+		return append(bytes.Join(docs, []byte("\n---\n")), '\n')
+	}
+	return join(c), join(r), nil
+}
+
+// editChartCRDs applies exclude and patches to the CRD files of a chart
+// and of its subcharts, unpacking packed subcharts so they can be edited.
+// A file left without objects goes, since Helm refuses an empty one.
+func editChartCRDs(chart string, exclude []Selector, patches []Patch) error {
+	if err := unpackSubcharts(chart); err != nil {
+		return err
+	}
+	matched := make([]bool, len(patches))
+	err := filepath.WalkDir(chart, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Base(filepath.Dir(p)) != "crds" {
+			return err
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Dir(p)), "Chart.yaml")); err != nil {
+			return nil // a crds directory that is not a chart's
+		}
+		switch filepath.Ext(p) {
+		case ".yaml", ".yml", ".json":
+		default:
+			return nil
+		}
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		out, err := editObjects(raw, exclude, patches, matched)
+		if err != nil {
+			return fmt.Errorf("%s: %w", p, err)
+		}
+		if strings.TrimSpace(string(out)) == "" {
+			return os.Remove(p)
+		}
+		return os.WriteFile(p, out, 0o644)
+	})
+	if err != nil {
+		return err
+	}
+	for i, m := range matched {
+		if !m {
+			return fmt.Errorf("patch %d (%s %s) matched no object in the chart's crds/", i+1, patches[i].Kind, patches[i].Name)
+		}
+	}
+	return nil
+}
+
+// unpackSubcharts replaces packed subcharts, charts/*.tgz, with their
+// directories, all the way down; Helm loads either form.
+func unpackSubcharts(chart string) error {
+	dir := filepath.Join(chart, "charts")
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".tgz") {
+			f, err := os.Open(p)
+			if err != nil {
+				return err
+			}
+			err = source.Untar(f, dir)
+			f.Close()
+			if err != nil {
+				return fmt.Errorf("unpack %s: %w", e.Name(), err)
+			}
+			if err := os.Remove(p); err != nil {
+				return err
+			}
+		}
+	}
+	entries, err = os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			if err := unpackSubcharts(filepath.Join(dir, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func editObjects(raw []byte, exclude []Selector, patches []Patch, matched []bool) ([]byte, error) {
 	var kept [][]byte
 	for _, doc := range docSeparator.Split(string(raw), -1) {

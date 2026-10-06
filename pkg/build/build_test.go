@@ -337,3 +337,116 @@ func TestPatchesChangeOnlyWhatTheyMatch(t *testing.T) {
 		t.Fatalf("a patch that matches nothing must fail the build, got %v", err)
 	}
 }
+
+func crdDoc(name string) string {
+	return "apiVersion: apiextensions.k8s.io/v1\nkind: CustomResourceDefinition\nmetadata: {name: " + name + "}\nspec: {group: x, names: {kind: X, plural: x}, scope: Namespaced, versions: []}\n"
+}
+
+// tgz packs files under prefix into a gzipped tar, as helm package does.
+func tgz(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for n, body := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: n, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestExcludeAndPatchCRDsOfAChartAndItsPackedSubcharts(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "chart/Chart.yaml"), "apiVersion: v2\nname: gateway\nversion: 1.0.0\n")
+	writeFile(t, filepath.Join(dir, "chart/crds/envoy.yaml"), crdDoc("backends.gateway.envoyproxy.io"))
+	sub := tgz(t, map[string]string{
+		"gateway-crds/Chart.yaml":           "apiVersion: v2\nname: gateway-crds\nversion: 1.0.0\n",
+		"gateway-crds/crds/gatewayapi.yaml": crdDoc("gateways.gateway.networking.k8s.io") + "---\n" + crdDoc("httproutes.gateway.networking.k8s.io"),
+		"gateway-crds/crds/envoy-more.yaml": crdDoc("envoyproxies.gateway.envoyproxy.io"),
+	})
+	if err := os.MkdirAll(filepath.Join(dir, "chart/charts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "chart/charts/gateway-crds-1.0.0.tgz"), sub, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "recipe.yaml"), `apiVersion: kubepkg.dev/v1beta1
+kind: Recipe
+metadata: {name: gateway}
+spec:
+  version: 1.0.0
+  build: 1
+  sources: {chart: {dir: chart}}
+  charts:
+    gateway:
+      from: [chart]
+      exclude: [{kind: CustomResourceDefinition, name: gateways.gateway.networking.k8s.io}, {kind: CustomResourceDefinition, name: httproutes.gateway.networking.k8s.io}]
+      patches:
+        - kind: CustomResourceDefinition
+          name: backends.gateway.envoyproxy.io
+          merge: {metadata: {annotations: {example.org/patched: "yes"}}}
+  package:
+    variants: [{name: default, components: [{name: gateway, path: gateway, install: {namespace: gw}}]}]
+`)
+	res, err := Build(context.Background(), dir, opts(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	crds, err := chartCRDs(filepath.Join(res.TreeDir, "gateway"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(crds, " ") != "backends.gateway.envoyproxy.io envoyproxies.gateway.envoyproxy.io" {
+		t.Fatalf("CRDs left: %v", crds)
+	}
+	if _, err := os.Stat(filepath.Join(res.TreeDir, "gateway/charts/gateway-crds/crds/gatewayapi.yaml")); !os.IsNotExist(err) {
+		t.Fatal("a crds/ file with nothing left in it stays; Helm refuses empty ones")
+	}
+	raw, _ := os.ReadFile(filepath.Join(res.TreeDir, "gateway/crds/envoy.yaml"))
+	if !strings.Contains(string(raw), "example.org/patched") {
+		t.Fatalf("the patch did not apply:\n%s", raw)
+	}
+}
+
+func TestCRDsOfWrappedManifestsCanGoToCrdsDir(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "upstream/all.yaml"), crdDoc("big.example.org")+"---\napiVersion: v1\nkind: ServiceAccount\nmetadata: {name: op}\n")
+	writeFile(t, filepath.Join(dir, "recipe.yaml"), `apiVersion: kubepkg.dev/v1beta1
+kind: Recipe
+metadata: {name: op}
+spec:
+  version: 1.0.0
+  build: 1
+  sources: {up: {dir: upstream}}
+  charts: {op: {from: [up], crdsDir: true}}
+  package:
+    crds: [big.example.org]
+    variants: [{name: default, components: [{name: op, path: op, install: {namespace: op}}]}]
+`)
+	res, err := Build(context.Background(), dir, opts(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	crds, _ := os.ReadFile(filepath.Join(res.TreeDir, "op/crds/0000-all.yaml"))
+	rest, _ := os.ReadFile(filepath.Join(res.TreeDir, "op/manifests/0000-all.yaml"))
+	if !strings.Contains(string(crds), "big.example.org") || strings.Contains(string(rest), "CustomResourceDefinition") || !strings.Contains(string(rest), "ServiceAccount") {
+		t.Fatalf("crds/:\n%s\nmanifests/:\n%s", crds, rest)
+	}
+	docs, err := renderChart(filepath.Join(res.TreeDir, "op"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names, _ := crdNames(docs); strings.Join(names, ",") != "big.example.org" {
+		t.Fatalf("the CRD is not installed from crds/: %v", names)
+	}
+}

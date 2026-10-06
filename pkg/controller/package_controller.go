@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -160,11 +161,8 @@ func (r *PackageReconciler) reconcile(ctx context.Context, pkg *v1beta1.Package)
 		return ctrl.Result{}, nil
 	}
 	if r.CRDs != nil {
-		if owner, crd, err := r.CRDs.Conflict(ctx, pkg.Name, src.Spec.CRDs); err != nil {
-			return ctrl.Result{}, err
-		} else if owner != "" {
-			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonCRDOwnershipConflict, fmt.Sprintf("CRD %s is owned by package %s", crd, owner))
-			return ctrl.Result{}, nil
+		if res, blocked, err := r.checkCRDs(ctx, pkg, src); blocked || err != nil {
+			return res, err
 		}
 	}
 
@@ -254,6 +252,13 @@ func (r *PackageReconciler) observe(ctx context.Context, pkg *v1beta1.Package, r
 
 // applyNew records a new revision and applies it.
 func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1beta1.Package, d *desiredState, revs *[]v1beta1.PackageRevision, src *v1beta1.PackageSource) (ctrl.Result, error) {
+	if r.CRDs != nil && pkg.Spec.CRDPolicy != v1beta1.CRDPolicyDelete {
+		// A CRD the new version stops shipping would be deleted by its
+		// release, and every object of it with it; keep it instead.
+		if err := r.CRDs.Retain(ctx, pkg.Name, src.Spec.CRDs); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 	n := int64(1)
 	if l := lastOf(*revs); l != nil {
 		n = l.Spec.Revision + 1
@@ -265,7 +270,7 @@ func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1beta1.Package, 
 			Annotations: map[string]string{AnnotationDesiredDigest: d.digest},
 		},
 		Spec: v1beta1.PackageRevisionSpec{
-			Package: pkg.Name, Revision: n, Version: d.version, Variant: d.variant, RollbackSafe: d.rollbackSafe,
+			Package: pkg.Name, Revision: n, Version: d.version, Variant: d.variant, RollbackSafe: d.rollbackSafe && len(moved(lastGood(*revs, n), d)) == 0,
 		},
 	}
 	for _, c := range d.components {
@@ -298,6 +303,15 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1beta1.Package, 
 	// delivery tool supporting it.
 	if res, done, err := r.runHooks(ctx, pkg, rev, d, revs); done {
 		return res, err
+	}
+	// A component that moved to another namespace or release name leaves
+	// first: its cluster-wide objects belong to the old release, and the
+	// new one could not be installed next to it.
+	if err := r.removeMoved(ctx, pkg, d, *revs, rev); errors.Is(err, backend.ErrUninstalling) {
+		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing, fmt.Sprintf("applying revision %d: removing components from where they were", rev.Spec.Revision))
+		return ctrl.Result{RequeueAfter: progressRequeue}, nil
+	} else if err != nil {
+		return ctrl.Result{}, err
 	}
 	var applied []desiredComponent
 	for _, c := range d.components {
@@ -590,6 +604,35 @@ func (r *PackageReconciler) rollbackTo(ctx context.Context, pkg *v1beta1.Package
 	return ctrl.Result{}, clear()
 }
 
+// moved lists the releases of prev whose components d installs elsewhere.
+func moved(prev *v1beta1.PackageRevision, d *desiredState) []v1beta1.ComponentSnapshot {
+	if prev == nil {
+		return nil
+	}
+	now := map[string]string{}
+	for _, c := range d.components {
+		now[c.snapshot.Name] = c.snapshot.Namespace + "/" + c.snapshot.ReleaseName
+	}
+	var out []v1beta1.ComponentSnapshot
+	for _, c := range prev.Spec.Components {
+		if where, ok := now[c.Name]; ok && where != c.Namespace+"/"+c.ReleaseName {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// removeMoved uninstalls the old releases of components that moved. Such
+// a revision cannot be rolled back, since the old release is gone.
+func (r *PackageReconciler) removeMoved(ctx context.Context, pkg *v1beta1.Package, d *desiredState, revs []v1beta1.PackageRevision, rev *v1beta1.PackageRevision) error {
+	for _, c := range moved(lastGood(revs, rev.Spec.Revision), d) {
+		if err := r.Backend.Uninstall(ctx, backend.Component{Package: pkg.Name, Name: c.Name, ReleaseName: c.ReleaseName, Namespace: c.Namespace}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // removeOrphans uninstalls components the previous revision had and this
 // one does not.
 func (r *PackageReconciler) removeOrphans(ctx context.Context, pkg *v1beta1.Package, d *desiredState, revs []v1beta1.PackageRevision, rev *v1beta1.PackageRevision) error {
@@ -613,6 +656,41 @@ func (r *PackageReconciler) removeOrphans(ctx context.Context, pkg *v1beta1.Pack
 	return nil
 }
 
+// checkCRDs stops a package whose CRDs another package owns, unless that
+// package's chosen version no longer lists them: then they move to this
+// package, which takes them over into its own release.
+func (r *PackageReconciler) checkCRDs(ctx context.Context, pkg *v1beta1.Package, src *v1beta1.PackageSource) (ctrl.Result, bool, error) {
+	for {
+		owner, crd, err := r.CRDs.Conflict(ctx, pkg.Name, src.Spec.CRDs)
+		if err != nil || owner == "" {
+			return ctrl.Result{}, false, err
+		}
+		other := &v1beta1.PackageSource{}
+		err = r.Get(ctx, types.NamespacedName{Name: owner}, other)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, true, err
+		}
+		if err == nil && slices.Contains(other.Spec.CRDs, crd) {
+			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonCRDOwnershipConflict, fmt.Sprintf("CRD %s is owned by package %s", crd, owner))
+			return ctrl.Result{}, true, nil
+		}
+		if err := r.CRDs.Transfer(ctx, crd, owner, pkg.Name); err != nil {
+			return ctrl.Result{}, true, err
+		}
+		if pkg.Annotations[AnnotationAdopt] != "true" {
+			// The CRD object still belongs to the other package's release.
+			patch := client.MergeFrom(pkg.DeepCopy())
+			if pkg.Annotations == nil {
+				pkg.Annotations = map[string]string{}
+			}
+			pkg.Annotations[AnnotationAdopt] = "true"
+			if err := r.Patch(ctx, pkg, patch); err != nil {
+				return ctrl.Result{}, true, err
+			}
+		}
+	}
+}
+
 // finalize removes releases, newest components first, and handles CRDs.
 func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1beta1.Package) error {
 	forgetPackage(pkg.Name)
@@ -623,21 +701,32 @@ func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1beta1.Package) 
 	if err != nil {
 		return err
 	}
-	if cur := lastOf(revs); cur != nil {
-		for i := len(cur.Spec.Components) - 1; i >= 0; i-- {
-			c := cur.Spec.Components[i]
+	deleteCRDs := pkg.Spec.CRDPolicy == v1beta1.CRDPolicyDelete
+	if r.CRDs != nil && !deleteCRDs {
+		// Kept CRDs must survive the releases that carry them going.
+		if err := r.CRDs.Retain(ctx, pkg.Name, nil); err != nil {
+			return err
+		}
+	}
+	// Every release the package ever made, newest revision and newest
+	// component first: a component that moved, or one left by a failed
+	// revision, goes too.
+	seen := map[string]bool{}
+	for ri := len(revs) - 1; ri >= 0; ri-- {
+		comps := revs[ri].Spec.Components
+		for i := len(comps) - 1; i >= 0; i-- {
+			c := comps[i]
+			if seen[c.Namespace+"/"+c.ReleaseName] {
+				continue
+			}
+			seen[c.Namespace+"/"+c.ReleaseName] = true
 			if err := r.Backend.Uninstall(ctx, backend.Component{Package: pkg.Name, Name: c.Name, ReleaseName: c.ReleaseName, Namespace: c.Namespace}); err != nil {
 				return err
 			}
 		}
 	}
 	if r.CRDs != nil {
-		src := &v1beta1.PackageSource{}
-		var crds []string
-		if err := r.Get(ctx, types.NamespacedName{Name: pkg.Name}, src); err == nil {
-			crds = src.Spec.CRDs
-		}
-		if err := r.CRDs.Release(ctx, pkg.Name, crds, pkg.Spec.CRDPolicy == v1beta1.CRDPolicyDelete); err != nil {
+		if err := r.CRDs.Release(ctx, pkg.Name, deleteCRDs); err != nil {
 			return err
 		}
 	}
@@ -697,35 +786,90 @@ func (r *PackageReconciler) dependencyReleases(ctx context.Context, reqs []resol
 func (r *PackageReconciler) reconcileNamespaces(ctx context.Context, pkg *v1beta1.Package, v *v1beta1.Variant) error {
 	targets := map[string]bool{}
 	for _, c := range enabledComponents(pkg, v) {
-		if c.Install.Namespace != "" {
-			targets[c.Install.Namespace] = targets[c.Install.Namespace] || c.Install.Privileged
+		if ns, _ := placement(pkg, c); ns != "" {
+			targets[ns] = targets[ns] || c.Install.Privileged
 		}
 	}
-	if len(targets) == 0 {
+	// Namespaces the package's components were in before: a privileged
+	// component may have left one.
+	left := map[string]bool{}
+	if revs, err := r.revisions(ctx, pkg.Name); err == nil {
+		if cur := lastOf(revs); cur != nil {
+			for _, c := range cur.Spec.Components {
+				if _, still := targets[c.Namespace]; !still && c.Namespace != "" {
+					left[c.Namespace] = true
+				}
+			}
+		}
+	}
+	if len(targets) == 0 && len(left) == 0 {
 		return nil
 	}
-	privileged, err := r.privilegedNamespaces(ctx, targets)
+	all := map[string]bool{}
+	for n, p := range targets {
+		all[n] = p
+	}
+	for n := range left {
+		all[n] = false
+	}
+	privileged, err := r.privilegedNamespaces(ctx, all)
 	if err != nil {
 		return err
 	}
-	names := make([]string, 0, len(targets))
-	for n := range targets {
+	names := make([]string, 0, len(all))
+	for n := range all {
 		names = append(names, n)
 	}
 	sort.Strings(names)
 	for _, n := range names {
+		if left[n] {
+			if !privileged[n] {
+				if err := r.unprivilege(ctx, n); err != nil {
+					return fmt.Errorf("namespace %s: %w", n, err)
+				}
+			}
+			continue
+		}
 		labels := map[string]string{}
 		for k, v := range r.Profile.NamespaceLabels {
 			labels[k] = v
 		}
 		if privileged[n] {
-			labels["pod-security.kubernetes.io/enforce"] = "privileged"
+			labels[podSecurityLabel] = "privileged"
+		} else if err := r.unprivilege(ctx, n); err != nil {
+			return fmt.Errorf("namespace %s: %w", n, err)
 		}
 		if err := r.ensureNamespace(ctx, n, labels); err != nil {
 			return fmt.Errorf("namespace %s: %w", n, err)
 		}
 	}
 	return nil
+}
+
+const (
+	podSecurityLabel = "pod-security.kubernetes.io/enforce"
+	// annotationPodSecurity marks a privileged pod security level kubepkg
+	// set, so it is the only one kubepkg ever takes away.
+	annotationPodSecurity = "kubepkg.dev/pod-security"
+)
+
+// unprivilege takes away a privileged level kubepkg set on a namespace
+// that no longer runs privileged components; one set by anybody else
+// stays.
+func (r *PackageReconciler) unprivilege(ctx context.Context, name string) error {
+	ns := &corev1.Namespace{}
+	if err := r.Get(ctx, types.NamespacedName{Name: name}, ns); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if ns.Annotations[annotationPodSecurity] != "privileged" {
+		return nil
+	}
+	patch := client.MergeFrom(ns.DeepCopy())
+	delete(ns.Annotations, annotationPodSecurity)
+	if ns.Labels[podSecurityLabel] == "privileged" {
+		delete(ns.Labels, podSecurityLabel)
+	}
+	return r.Patch(ctx, ns, patch)
 }
 
 // ensureNamespace creates a namespace or adds labels to it. It only adds:
@@ -737,6 +881,9 @@ func (r *PackageReconciler) ensureNamespace(ctx context.Context, name string, la
 		ns = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
 			Name: name, Labels: labels, Annotations: map[string]string{"helm.sh/resource-policy": "keep"},
 		}}
+		if v, ok := labels[podSecurityLabel]; ok {
+			ns.Annotations[annotationPodSecurity] = v
+		}
 		return client.IgnoreAlreadyExists(r.Create(ctx, ns))
 	}
 	if err != nil {
@@ -751,6 +898,12 @@ func (r *PackageReconciler) ensureNamespace(ctx context.Context, name string, la
 			}
 			ns.Labels[k] = v
 			changed = true
+			if k == podSecurityLabel {
+				if ns.Annotations == nil {
+					ns.Annotations = map[string]string{}
+				}
+				ns.Annotations[annotationPodSecurity] = v
+			}
 		}
 	}
 	if !changed {
@@ -779,8 +932,9 @@ func (r *PackageReconciler) privilegedNamespaces(ctx context.Context, targets ma
 			continue
 		}
 		for _, c := range enabledComponents(p, v) {
-			if _, relevant := targets[c.Install.Namespace]; relevant && c.Install.Privileged {
-				out[c.Install.Namespace] = true
+			ns, _ := placement(p, c)
+			if _, relevant := targets[ns]; relevant && c.Install.Privileged {
+				out[ns] = true
 			}
 		}
 	}

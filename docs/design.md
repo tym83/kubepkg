@@ -169,7 +169,9 @@ The operator builds the desired state from Package and PackageSource. If it diff
 
 ## CRD ownership
 
-After a revision is applied, every CRD listed in `crds` is annotated `kubepkg.dev/owned-by: <package>`. A package cannot be applied while a CRD it lists is owned by another package. When a package is deleted, its CRDs are kept unless `crdPolicy: Delete`; kept CRDs lose the annotation so another package can adopt them.
+After a revision is applied, every CRD listed in `crds` is annotated `kubepkg.dev/owned-by: <package>`. A package cannot be applied while a CRD it lists is owned by another package, unless the owner's chosen version no longer lists that CRD. Then the CRD moves: it is annotated for the new owner and `helm.sh/resource-policy: keep`, and the new owner's revision takes the object over into its release. So a package that hands its CRDs to a new package it requires (envoy-gateway giving the Gateway API CRDs to gateway-api) does not wait for itself.
+
+Helm deletes what a release no longer renders, CRDs included, and with them every object of their kinds. kubepkg prevents that unless asked for it: before a revision whose version stops listing a CRD the package owns, the CRD is annotated `helm.sh/resource-policy: keep` and let go of. When a package is deleted, its CRDs are kept the same way, before its releases are uninstalled, unless `crdPolicy: Delete`. Kept CRDs lose the ownership annotation, so another package can adopt them.
 
 ## Backends
 

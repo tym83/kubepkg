@@ -114,11 +114,20 @@ index.yaml; packages and charts stay in their registries.`,
 				return err
 			}
 			if len(keys) > 0 {
+				// One key writes the plain signature every kubepkg release
+				// reads, v0.1 included; several keys need the list form.
 				var sig []byte
-				for _, k := range keys {
-					if sig, err = repo.SignIndex(raw.Bytes(), sig, k); err != nil {
-						return err
+				if len(keys) == 1 {
+					sig, err = repo.Sign(raw.Bytes(), keys[0])
+				} else {
+					for _, k := range keys {
+						if sig, err = repo.SignIndex(raw.Bytes(), sig, k); err != nil {
+							break
+						}
 					}
+				}
+				if err != nil {
+					return err
 				}
 				if err := os.WriteFile(out+repo.SignatureSuffix, sig, 0o644); err != nil {
 					return err

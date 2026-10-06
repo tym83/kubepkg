@@ -59,8 +59,10 @@ const maxTreeBytes = 512 << 20
 // under trees/ and charts/ of CacheDir.
 type Fetcher struct {
 	CacheDir string
-	// PlainHTTP talks to registries without TLS (local test registries).
-	PlainHTTP bool
+	// PlainHTTP talks to registries without TLS (local test registries):
+	// to every registry, or only to PlainHTTPHosts when that is set.
+	PlainHTTP      bool
+	PlainHTTPHosts []string
 	// CredentialsFile is a Docker config with registry credentials; empty
 	// means anonymous access.
 	CredentialsFile string
@@ -153,7 +155,7 @@ func (f *Fetcher) repository(target string) (*remote.Repository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", target, err)
 	}
-	repo.PlainHTTP = f.PlainHTTP
+	repo.PlainHTTP = f.plainHTTP(repo.Reference.Registry)
 	client := &auth.Client{Client: retry.DefaultClient, Cache: auth.NewCache()}
 	if f.CredentialsFile != "" {
 		store, err := credentials.NewStore(f.CredentialsFile, credentials.StoreOptions{})
@@ -219,4 +221,20 @@ func untar(r io.Reader, dst string) error {
 			return fmt.Errorf("entry %q has unsupported type %c", h.Name, h.Typeflag)
 		}
 	}
+}
+
+// plainHTTP says whether to reach host without TLS.
+func (f *Fetcher) plainHTTP(host string) bool {
+	if !f.PlainHTTP {
+		return false
+	}
+	if len(f.PlainHTTPHosts) == 0 {
+		return true
+	}
+	for _, h := range f.PlainHTTPHosts {
+		if h == host {
+			return true
+		}
+	}
+	return false
 }

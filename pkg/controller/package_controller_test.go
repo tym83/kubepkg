@@ -792,3 +792,87 @@ func TestAdoptTakesOverOnceInTheReleaseItNames(t *testing.T) {
 		t.Fatalf("after an upgrade: adopted %v, calls %v", e.be.adopted, e.be.calls)
 	}
 }
+
+func TestAComponentThatMovesLeavesItsOldPlaceFirst(t *testing.T) {
+	e := newEnv(t)
+	e.create(mkSource("logs", "1.0.0", true, "agent"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "logs"}})
+	e.reconcile("logs")
+	e.reconcile("logs")
+
+	p := e.pkg("logs")
+	p.Spec.Components = map[string]v1beta1.PackageComponent{"agent": {Namespace: "logging-agent"}}
+	if err := e.c.Update(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	e.be.calls = nil
+	e.reconcile("logs")
+	e.reconcile("logs")
+	if len(e.be.calls) < 2 || e.be.calls[0] != "uninstall ns-logs/agent" || !strings.HasPrefix(e.be.calls[1], "apply logging-agent/agent ") {
+		t.Fatalf("calls: %v", e.be.calls)
+	}
+	rev := &v1beta1.PackageRevision{}
+	if err := e.c.Get(context.Background(), types.NamespacedName{Name: "logs-2"}, rev); err != nil {
+		t.Fatal(err)
+	}
+	if rev.Spec.RollbackSafe {
+		t.Fatal("a revision that moved a component claims it can be rolled back")
+	}
+
+	// Deleting the package takes away every release it ever made.
+	e.be.releases["ns-logs/agent"] = []fakeRelease{{chart: "left behind"}}
+	if err := e.c.Delete(context.Background(), e.pkg("logs")); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("logs")
+	if len(e.be.releases) != 0 {
+		t.Fatalf("left behind: %v", e.be.releases)
+	}
+}
+
+func nsLabel(t *testing.T, c client.Client, name string) string {
+	t.Helper()
+	ns := &corev1.Namespace{}
+	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, ns); err != nil {
+		t.Fatal(err)
+	}
+	return ns.Labels[podSecurityLabel]
+}
+
+func TestPrivilegedGoesWhenThePrivilegedComponentLeaves(t *testing.T) {
+	e := newEnv(t)
+	// Somebody else's privileged namespace kubepkg must not touch.
+	e.create(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "admin", Labels: map[string]string{podSecurityLabel: "privileged"}}})
+	src := mkSource("mon", "1.0.0", true, "node-exporter", "kube-state", "dashboards")
+	for i := range src.Spec.Variants[0].Components {
+		c := &src.Spec.Variants[0].Components[i]
+		c.Install.Namespace = "monitoring"
+		c.Install.Privileged = c.Name == "node-exporter"
+		if c.Name == "dashboards" {
+			c.Install.Namespace = "admin" // not privileged, in a namespace somebody made privileged
+		}
+	}
+	e.create(src, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "mon"}})
+	e.reconcile("mon")
+	e.reconcile("mon")
+	if nsLabel(t, e.c, "monitoring") != "privileged" {
+		t.Fatal("monitoring is not privileged while node-exporter runs there")
+	}
+
+	// node-exporter moves to its own namespace.
+	p := e.pkg("mon")
+	p.Spec.Components = map[string]v1beta1.PackageComponent{"node-exporter": {Namespace: "node-exporter"}}
+	if err := e.c.Update(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("mon")
+	e.reconcile("mon")
+	if l := nsLabel(t, e.c, "monitoring"); l != "" {
+		t.Fatalf("monitoring stayed %q", l)
+	}
+	if nsLabel(t, e.c, "node-exporter") != "privileged" {
+		t.Fatal("node-exporter's new namespace is not privileged")
+	}
+	if nsLabel(t, e.c, "admin") != "privileged" {
+		t.Fatal("a level kubepkg did not set was taken away")
+	}
+}
