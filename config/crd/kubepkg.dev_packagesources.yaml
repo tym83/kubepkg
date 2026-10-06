@@ -21,18 +21,17 @@ spec:
       jsonPath: .spec.version
       name: Version
       type: string
-    - description: Package variants (comma-separated)
-      jsonPath: .status.variants
-      name: Variants
+    - description: Packaging build of that version
+      jsonPath: .spec.build
+      name: Build
+      type: integer
+    - description: Repository the version was taken from; empty when written by hand
+      jsonPath: .metadata.labels.kubepkg\.dev/repository
+      name: Repository
       type: string
-    - description: Ready status
-      jsonPath: .status.conditions[?(@.type=='Ready')].status
-      name: Ready
-      type: string
-    - description: Ready message
-      jsonPath: .status.conditions[?(@.type=='Ready')].message
-      name: Status
-      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:

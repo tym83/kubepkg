@@ -1,6 +1,6 @@
 CONTROLLER_GEN ?= $(shell go env GOPATH)/bin/controller-gen
 
-.PHONY: generate test build crds-for-group chart-crds docs
+.PHONY: generate test build crds-for-group chart-crds docs screenshots
 
 generate:
 	$(CONTROLLER_GEN) object paths=./api/...
@@ -27,3 +27,9 @@ chart-crds:
 # Reference pages generated from the commands and the CRDs.
 docs:
 	go run ./hack/gendocs config/crd docs/reference/cli.md docs/reference/api.md
+
+# Terminal screenshots for the docs, drawn from the transcripts that
+# hack/docs/capture.sh records on a real cluster.
+SCREENSHOTS = plan install upgrade rollback trust init
+screenshots:
+	@for s in $(SCREENSHOTS); do python3 hack/docs/term2svg.py docs/examples/$$s.txt docs/img/$$s.svg "kubepkg — $$s"; done

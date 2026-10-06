@@ -39,9 +39,9 @@ const UnversionedVersion = "0.0.0-unversioned"
 // +kubebuilder:resource:scope=Cluster,shortName={pks}
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Package version"
-// +kubebuilder:printcolumn:name="Variants",type="string",JSONPath=".status.variants",description="Package variants (comma-separated)"
-// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Ready status"
-// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].message",description="Ready message"
+// +kubebuilder:printcolumn:name="Build",type="integer",JSONPath=".spec.build",description="Packaging build of that version"
+// +kubebuilder:printcolumn:name="Repository",type="string",JSONPath=".metadata.labels.kubepkg\\.dev/repository",description="Repository the version was taken from; empty when written by hand"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // PackageSource is one package at one version: where its charts come from,
 // what it provides and requires, and how its components are installed.
