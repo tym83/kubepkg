@@ -19,6 +19,8 @@ package repo
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"strconv"
 	"strings"
@@ -211,5 +213,59 @@ func TestRotationRollbackAndFork(t *testing.T) {
 	}
 	if _, err := s.load(pin); err != nil {
 		t.Fatal("without the accepted root on record the fork is indistinguishable; the record is what protects")
+	}
+}
+
+// A plain signature, the one form kubepkg v0.1 reads, works in every
+// mode: alone with a root of threshold 1, and as the first of several
+// signatures once trust sign adds more.
+func TestPlainSignaturesEverywhere(t *testing.T) {
+	r, i := keys(t, 1), keys(t, 2)
+	s := newRepoServer()
+	year := s.now.Add(365 * 24 * time.Hour)
+	week := s.now.Add(7 * 24 * time.Hour)
+	s.publishRoot(t, signedRoot(t, 1, r, 1, i, 1, year, r[0]))
+	s.publishIndex(t, week)
+	index := s.files["mem://r/index.yaml"]
+	plain, err := Sign(index, i[0].priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What a v0.1 client does with the file.
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(plain)))
+	if err != nil {
+		t.Fatalf("not plain base64: %q", plain)
+	}
+	pk, _ := ParsePublicKeys([]string{string(i[0].pub)})
+	if !ed25519.Verify(pk[0], index, raw) {
+		t.Fatal("a v0.1 client would refuse it")
+	}
+	s.files["mem://r/index.yaml"+SignatureSuffix] = plain
+	if _, err := s.load(Trust{RootKeys: pubs(r...), RootThreshold: 1}); err != nil {
+		t.Fatalf("a root of threshold 1 refuses a plain signature: %v", err)
+	}
+
+	// Threshold 2: the plain signature counts once, a second key adds one.
+	s.publishRoot(t, signedRoot(t, 1, r, 1, i, 2, year, r[0]))
+	s.files["mem://r/index.yaml"] = index
+	s.files["mem://r/index.yaml"+SignatureSuffix] = plain
+	if _, err := s.load(Trust{RootKeys: pubs(r...), RootThreshold: 1}); !errors.Is(err, ErrBadSignature) {
+		t.Fatalf("one plain signature met a threshold of 2: %v", err)
+	}
+	both, err := SignIndex(index, plain, i[1].priv)
+	if err != nil {
+		t.Fatalf("adding to a plain signature: %v", err)
+	}
+	s.files["mem://r/index.yaml"+SignatureSuffix] = both
+	if _, err := s.load(Trust{RootKeys: pubs(r...), RootThreshold: 1}); err != nil {
+		t.Fatalf("plain plus one more: %v", err)
+	}
+	again, err := SignIndex(index, plain, i[0].priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.files["mem://r/index.yaml"+SignatureSuffix] = again
+	if _, err := s.load(Trust{RootKeys: pubs(r...), RootThreshold: 1}); !errors.Is(err, ErrBadSignature) {
+		t.Fatalf("the same key as plain and as listed counted twice: %v", err)
 	}
 }
