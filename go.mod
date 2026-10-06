@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/distribution/reference v0.6.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/fluxcd/helm-controller/api v1.5.1
 	github.com/fluxcd/pkg/apis/kustomize v1.15.0

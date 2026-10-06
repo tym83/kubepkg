@@ -74,7 +74,12 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if !pkg.DeletionTimestamp.IsZero() {
-		return ctrl.Result{}, r.finalize(ctx, pkg)
+		if err := r.finalize(ctx, pkg); errors.Is(err, backend.ErrUninstalling) {
+			return ctrl.Result{RequeueAfter: progressRequeue}, nil
+		} else if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 	if controllerutil.AddFinalizer(pkg, FinalizerCleanup) {
 		if err := r.Update(ctx, pkg); err != nil {
@@ -333,7 +338,10 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1alpha1.Package,
 		}
 	}
 
-	if err := r.removeOrphans(ctx, pkg, d, *revs, rev); err != nil {
+	if err := r.removeOrphans(ctx, pkg, d, *revs, rev); errors.Is(err, backend.ErrUninstalling) {
+		setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonProgressing, fmt.Sprintf("applying revision %d: removing components the new version drops", rev.Spec.Revision))
+		return ctrl.Result{RequeueAfter: progressRequeue}, nil
+	} else if err != nil {
 		return ctrl.Result{}, err
 	}
 	rev.Status.Phase = v1alpha1.PhaseApplied

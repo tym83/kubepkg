@@ -168,6 +168,7 @@ Short names: `pks`.
 | `build` | integer | Build numbers the packagings of one upstream version: a new patch or default in the recipe makes a new build of the same version. Version constraints apply to Version; of two equal versions the higher build is newer. |
 | `conflicts` | []string | Conflicts lists package names or capabilities that must not be installed alongside this package. |
 | `crds` | []string | CRDs lists the names of CustomResourceDefinitions this package owns. |
+| `images` | []string | Images are the container images the package runs, each pinned by digest: registry/repository:tag@sha256:..., including those an operator in the package deploys on its own. A signed index covers them like the charts, and kubepkg bundle copies them for air-gapped clusters. |
 | `permissions` | object | Permissions declares what the package needs in the cluster. It is shown in plans so the operator of the cluster sees it before installing; it is not enforced yet. |
 | `permissions.clusterWide` | boolean | ClusterWide is true when the package needs cluster-scoped access. |
 | `permissions.rules` | []object | Rules are the RBAC rules the package's components need. |

@@ -160,3 +160,27 @@ func TestRenderSource(t *testing.T) {
 		t.Errorf("HelmRelease for an HTTP chart: %+v %+v", hr.Spec.ChartRef, hr.Spec.Chart)
 	}
 }
+
+func TestUninstallWaitsForTheHelmController(t *testing.T) {
+	sch := runtime.NewScheme()
+	if err := helmv2.AddToScheme(sch); err != nil {
+		t.Fatal(err)
+	}
+	hr := &helmv2.HelmRelease{ObjectMeta: metav1.ObjectMeta{Name: "cert-manager", Namespace: "cert-manager", Finalizers: []string{"finalizers.fluxcd.io"}}}
+	cl := fake.NewClientBuilder().WithScheme(sch).WithObjects(hr).Build()
+	b := &Backend{Client: cl}
+	ctx := context.Background()
+	if err := b.Uninstall(ctx, component()); !errors.Is(err, backend.ErrUninstalling) {
+		t.Fatalf("while the helm controller uninstalls: %v", err)
+	}
+	if err := cl.Get(ctx, types.NamespacedName{Name: "cert-manager", Namespace: "cert-manager"}, hr); err != nil {
+		t.Fatal(err)
+	}
+	hr.Finalizers = nil
+	if err := cl.Update(ctx, hr); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Uninstall(ctx, component()); err != nil {
+		t.Fatalf("once the HelmRelease is gone: %v", err)
+	}
+}

@@ -33,6 +33,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/tym83/kubepkg/pkg/images"
 	"github.com/tym83/kubepkg/pkg/source"
 )
 
@@ -48,6 +49,9 @@ type InitInput struct {
 	Manifests   []string
 	Description string // default: the chart's description
 	Home        string // default: the chart's home
+	// Images pins the images the upstream runs; nil leaves package.images
+	// for kubepkg images to fill.
+	Images *images.Resolver
 }
 
 type initSource struct {
@@ -60,6 +64,7 @@ type initData struct {
 	Sources []initSource
 	Exclude bool
 	CRDs    []string
+	Images  []string
 }
 
 var recipeTemplate = template.Must(template.New("recipe").Parse(`apiVersion: kubepkg.dev/v1alpha1
@@ -100,6 +105,12 @@ spec:
     crds:{{if not .CRDs}} []{{end}}
 {{- range .CRDs}}
       - {{.}}
+{{- end}}
+{{- if .Images}}
+    images:   # what the charts run, pinned; add images an operator deploys on its own
+{{- range .Images}}
+      - {{.}}
+{{- end}}
 {{- end}}
     rollback:
       safe: false   # true once rolling back to the previous version is known not to lose data
@@ -148,8 +159,15 @@ func Init(ctx context.Context, dir string, in InitInput, fetcher *source.Fetcher
 		ch := *in.Chart
 		ch.Digest = digest
 		d.Sources = []initSource{{Name: "upstream", Chart: &ch}}
-		if d.CRDs, err = chartCRDs(chartDir); err != nil {
-			return fmt.Errorf("render the chart with its defaults to find its CRDs: %w", err)
+		docs, err := renderChart(chartDir)
+		if err != nil {
+			return fmt.Errorf("render the chart with its defaults to find its CRDs and images: %w", err)
+		}
+		if d.CRDs, err = crdNames(docs); err != nil {
+			return err
+		}
+		if d.Images, err = images.FromManifests(docs...); err != nil {
+			return err
 		}
 	} else {
 		if d.Version == "" {
@@ -169,6 +187,11 @@ func Init(ctx context.Context, dir string, in InitInput, fetcher *source.Fetcher
 			}
 			names[name] = true
 			d.Sources = append(d.Sources, initSource{Name: name, URL: u, SHA256: hex.EncodeToString(sum[:])})
+			imgs, err := images.FromManifests(string(raw))
+			if err != nil {
+				return err
+			}
+			d.Images = append(d.Images, imgs...)
 			kinds, names := scanKinds(raw)
 			d.Exclude = d.Exclude || kinds["Namespace"]
 			for _, n := range names {
@@ -179,6 +202,17 @@ func Init(ctx context.Context, dir string, in InitInput, fetcher *source.Fetcher
 			d.CRDs = append(d.CRDs, n)
 		}
 		sort.Strings(d.CRDs)
+	}
+	d.Images = dedupe(d.Images)
+	if in.Images == nil {
+		d.Images = nil
+	}
+	for i, img := range d.Images {
+		pinned, err := in.Images.Pin(ctx, img)
+		if err != nil {
+			return fmt.Errorf("pin the images the upstream runs: %w", err)
+		}
+		d.Images[i] = pinned
 	}
 	if d.Description == "" {
 		d.Description = "TODO: one line about " + in.Name
@@ -230,6 +264,19 @@ func scanKinds(raw []byte) (map[string]bool, []string) {
 		}
 	}
 	return kinds, crds
+}
+
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // sourceName names a manifest source after its file.

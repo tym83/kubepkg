@@ -75,22 +75,9 @@ func (f *Fetcher) FetchChart(ctx context.Context, c Chart) (dir, digest string, 
 		}
 	}
 
-	var archive []byte
-	switch {
-	case strings.HasPrefix(c.Repository, "oci://"):
-		archive, err = f.chartFromRegistry(ctx, c)
-	case strings.HasPrefix(c.Repository, "http://"), strings.HasPrefix(c.Repository, "https://"):
-		archive, err = chartFromIndex(ctx, c)
-	default:
-		err = fmt.Errorf("repository %q is neither http(s):// nor oci://", c.Repository)
-	}
+	archive, digest, err := f.ChartArchive(ctx, c)
 	if err != nil {
-		return "", "", fmt.Errorf("chart %s %s: %w", c.Name, c.Version, err)
-	}
-	sum := sha256.Sum256(archive)
-	digest = "sha256:" + hex.EncodeToString(sum[:])
-	if c.Digest != "" && c.Digest != digest {
-		return "", "", fmt.Errorf("chart %s %s from %s has digest %s, the package pins %s", c.Name, c.Version, c.Repository, digest, c.Digest)
+		return "", "", err
 	}
 
 	dir = f.chartDir(digest, c.Name)
@@ -121,6 +108,29 @@ func (f *Fetcher) FetchChart(ctx context.Context, c Chart) (dir, digest string, 
 		return "", "", err
 	}
 	return dir, digest, nil
+}
+
+// ChartArchive downloads a chart archive, from the mirror when the
+// fetcher has one, and checks it against the pinned digest.
+func (f *Fetcher) ChartArchive(ctx context.Context, c Chart) (archive []byte, digest string, err error) {
+	c = MirrorChart(f.Mirror, c)
+	switch {
+	case strings.HasPrefix(c.Repository, "oci://"):
+		archive, err = f.chartFromRegistry(ctx, c)
+	case strings.HasPrefix(c.Repository, "http://"), strings.HasPrefix(c.Repository, "https://"):
+		archive, err = chartFromIndex(ctx, c)
+	default:
+		err = fmt.Errorf("repository %q is neither http(s):// nor oci://", c.Repository)
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("chart %s %s: %w", c.Name, c.Version, err)
+	}
+	sum := sha256.Sum256(archive)
+	digest = "sha256:" + hex.EncodeToString(sum[:])
+	if c.Digest != "" && c.Digest != digest {
+		return nil, "", fmt.Errorf("chart %s %s from %s has digest %s, the package pins %s", c.Name, c.Version, c.Repository, digest, c.Digest)
+	}
+	return archive, digest, nil
 }
 
 func (f *Fetcher) chartDir(digest, name string) string {

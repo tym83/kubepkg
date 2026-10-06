@@ -217,11 +217,20 @@ func (b *Backend) Rollback(context.Context, backend.Component, int) (backend.Sta
 
 // Uninstall deletes the Application; its finalizer makes Argo CD remove
 // what it deployed.
+// Uninstall deletes the Application and reports ErrUninstalling until
+// Argo CD has removed what it deployed and the Application is gone.
 func (b *Backend) Uninstall(ctx context.Context, c backend.Component) error {
-	if err := b.Client.Delete(ctx, b.empty(c)); err != nil && !apierrors.IsNotFound(err) {
+	app := b.empty(c)
+	if err := b.Client.Delete(ctx, app); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
-	return nil
+	switch err := b.Client.Get(ctx, client.ObjectKeyFromObject(app), b.empty(c)); {
+	case apierrors.IsNotFound(err):
+		return nil
+	case err != nil:
+		return err
+	}
+	return backend.ErrUninstalling
 }
 
 var _ backend.Backend = (*Backend)(nil)
