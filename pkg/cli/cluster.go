@@ -103,6 +103,6 @@ func NewRootCommand(o Options) *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), version.Version)
 		},
 	})
-	root.AddCommand(initCmd(), validateCmd(), buildCmd(), pushCmd(), repoCmd(cl), searchCmd(cl), installCmd(cl), planCmd(cl), renderCmd(cl), removeCmd(cl), listCmd(cl), historyCmd(cl), rollbackCmd(cl))
+	root.AddCommand(initCmd(), validateCmd(), buildCmd(), pushCmd(), repoCmd(cl), trustCmd(), searchCmd(cl), installCmd(cl), planCmd(cl), renderCmd(cl), removeCmd(cl), listCmd(cl), historyCmd(cl), rollbackCmd(cl))
 	return root
 }

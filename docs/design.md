@@ -6,7 +6,7 @@ This document specifies the v0.1 API and the behaviour of the operator and the C
 
 In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, a plan before changes, three backends (Helm, Flux and Argo CD), and settings that let a platform embed kubepkg without changing its code.
 
-Out of scope for v0.1, on the roadmap: TUF repository metadata (role delegation, threshold signatures), pre-upgrade hooks, multi-cluster targeting.
+Out of scope, on the roadmap: delegated roles for parts of a repository (TUF targets delegation).
 
 ## Resources
 
@@ -302,7 +302,9 @@ Because every chart is pinned, the spec digest identifies exactly what a version
 
 ### Signing and trust
 
-A repository signs its index, and clusters trust repositories by key:
+There are two ways to trust a repository.
+
+**Plain keys.** The repository signs its index with an ed25519 key, and clusters trust it by public key:
 
 ```bash
 kubepkg repo keygen release                        # release.key (private), release.pub
@@ -310,9 +312,21 @@ kubepkg repo index dist --sign-key release.key     # index.yaml and index.yaml.s
 kubepkg repo add main https://packages.example.org/index.yaml --public-key release.pub
 ```
 
-The signature is ed25519 over the index exactly as published, served next to it with `.sig`. The index pins every chart by digest, and every chart is verified against its digest when fetched, so one signature covers everything the repository installs. A `Repository` with `publicKeys` accepts an index only when one of the keys signed it; several keys let a repository rotate: trust the new key, then sign with it. CI signs with `--sign-key-env`, reading the key from a secret.
+**A root of trust**, after TUF, for threshold signing and key rotation. The repository publishes `root.yaml` next to its index, and every version of it as `root/<version>.yaml`. The root names the keys that may sign the root itself and those that may sign the index, with a threshold for each, and expires:
 
-Every index carries the time it was generated, and a cluster refuses an index older than one it already accepted, so an old index that is validly signed cannot be replayed to bring back versions since withdrawn. A refused index leaves the one accepted before in use. The CLI applies the same checks to the cluster's repositories.
+```bash
+kubepkg trust root new --root-key a.pub --root-key b.pub --root-key c.pub --root-threshold 2 \
+  --index-key ci.pub --index-threshold 1 --expires 8760h -o root.yaml
+kubepkg trust sign root.yaml --key a.key           # each signer on their own machine
+kubepkg trust sign root.yaml --key c.key
+kubepkg repo index dist --expires 720h --sign-key ci.key
+kubepkg repo add main https://packages.example.org/index.yaml \
+  --root-key a.pub --root-key b.pub --root-key c.pub --root-threshold 2
+```
+
+A cluster pins the keys of root version 1 and their threshold. It follows the chain to the current root, accepting each version only when it is signed by enough root keys of the version before and of itself, so keys rotate without clients changing anything: `kubepkg trust root next root.yaml --root-key ...` makes the next version, and both the old and the new root keys sign it. The index must carry enough signatures by the keys the current root names for it (`kubepkg trust sign index.yaml --key ...` adds one), and neither the root nor the index may have expired: a mirror that keeps serving an old index is refused once it expires. A cluster records the root it accepted, refusing an older root and another root under the same version, the fork someone holding stolen old keys could make.
+
+In both modes the index pins every chart by digest, and every chart is verified against its digest when fetched, so the signatures cover everything the repository installs. Every index carries the time it was generated, and a cluster refuses an index older than one it already accepted, so an old index that is validly signed cannot be replayed. A refused index leaves the one accepted before in use. The CLI applies the same checks to the cluster's repositories.
 
 A distribution adds checks of its own, such as signatures from its own key infrastructure or allowed registries, through the admission policy.
 
@@ -419,6 +433,7 @@ Building and publishing:
 | `build <recipe>` | build a package from upstream sources and publish it |
 | `repo index <dir> [--sign-key <file>]` | build a repository index from the PackageSources under a directory, signed |
 | `repo keygen <prefix>` | make an ed25519 key pair for signing |
+| `trust root new`, `trust root next`, `trust sign` | make root versions and add signatures to roots and indexes |
 | `push <dir> <oci-ref>` | publish a package tree as is |
 | `render <pkg>...` | write packages for Flux, Argo CD or helmfile, in kubepkg's order |
 

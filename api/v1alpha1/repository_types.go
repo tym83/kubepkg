@@ -48,6 +48,26 @@ type RepositorySpec struct {
 	// none, the index is not checked. Several keys allow rotation.
 	// +optional
 	PublicKeys []string `json:"publicKeys,omitempty"`
+
+	// Trust verifies the repository the way TUF does: the root keys pinned
+	// here sign root/1.yaml, each later root version is signed by enough
+	// root keys of the one before and of itself, the current root names
+	// the keys and threshold the index needs, and both expire. Use it
+	// instead of publicKeys for threshold signing and key rotation.
+	// +optional
+	Trust *RepositoryTrust `json:"trust,omitempty"`
+}
+
+// RepositoryTrust pins a repository's root of trust.
+type RepositoryTrust struct {
+	// RootKeys are PEM encoded ed25519 keys of version 1 of the root.
+	// +required
+	// +kubebuilder:validation:MinItems=1
+	RootKeys []string `json:"rootKeys"`
+	// RootThreshold is how many of them must have signed it. Default 1.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	RootThreshold int32 `json:"rootThreshold,omitempty"`
 }
 
 // RepositoryStatus reports the last index fetch.
@@ -67,6 +87,12 @@ type RepositoryStatus struct {
 	// refused.
 	// +optional
 	IndexGenerated *metav1.Time `json:"indexGenerated,omitempty"`
+	// RootVersion and RootDigest are the root accepted last; an older root
+	// or another root under the same version is refused.
+	// +optional
+	RootVersion int32 `json:"rootVersion,omitempty"`
+	// +optional
+	RootDigest string `json:"rootDigest,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -39,6 +39,10 @@ plainHTTP: false
 #         -----BEGIN PUBLIC KEY-----
 #         ...
 #         -----END PUBLIC KEY-----
+#   or, for a repository with a root of trust (threshold signing, rotation):
+#     trust:
+#       rootThreshold: 2
+#       rootKeys: [...]
 repositories: []
 
 replicas: 1
