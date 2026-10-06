@@ -35,6 +35,71 @@ kubepkg build <recipe-dir> [flags]
       --work-dir string          where to build; kept for inspection when set
 ```
 
+## kubepkg bundle create
+
+Bundle packages, their requirements, charts and images into one file
+
+Create resolves the packages and everything they require, as install
+would for an empty cluster, and writes one tar file with the repository
+files exactly as published (index, signatures, roots), the chart archives,
+package trees and container images. Repositories are loaded with the same
+checks a cluster applies. Packages come from the indexes given with
+--repo, highest priority first, trusted with --public-key or --root-key,
+or else from the cluster's repositories.
+
+Images come from each package's pinned images. A package that pins none
+gets the images its charts run, pinned as they are now; import refuses
+those unless told to accept them.
+
+```text
+kubepkg bundle create <package>[@constraint]... -o <file.tar> [flags]
+
+  -o, --output string            bundle file to write
+      --plain-http               talk to registries without TLS (local registries only)
+      --public-key stringArray   trust indexes signed with this ed25519 public key file (repeatable)
+      --registry-config string   Docker config file with registry credentials
+      --repo stringArray         repository index URL, highest priority first (repeatable; default: the cluster's repositories)
+      --root-key stringArray     trust a repository with a root of trust through this pinned root key file (repeatable)
+      --root-threshold int32     how many pinned root keys must have signed version 1 of the root (default 1)
+      --variant string           variant whose requirements are resolved (default: default)
+```
+
+## kubepkg bundle import
+
+Check a bundle and copy it into a mirror registry
+
+Import checks a bundle against the repository keys you give, never keys
+the bundle carries: signatures, the root chain and expiry as a cluster
+checks them, then every chart, package tree and image against the signed
+packages. Only then does it copy them into the mirror registry, keeping
+every digest, and write the repositories' files to --site for serving
+inside the air gap. Point the operator at the mirror (chart value mirror)
+and the cluster's repositories at the site; --node-config writes the
+containerd and Talos settings that send image pulls to the mirror.
+
+```text
+kubepkg bundle import <file.tar> --mirror oci://<registry>/<path> --public-key <file> [flags]
+
+      --allow-unpinned-images    accept images that only the bundle pins, not a signed package
+      --mirror string            oci:// registry path to copy into, the operator's mirror
+      --node-config string       directory for containerd hosts.toml files and a Talos patch that send image pulls to the mirror
+      --plain-http               talk to the mirror registry without TLS
+      --public-key stringArray   trust indexes signed with this ed25519 public key file (repeatable)
+      --registry-config string   Docker config file with credentials for the mirror registry
+      --root-key stringArray     trust a repository with a root of trust through this pinned root key file (repeatable)
+      --root-threshold int32     how many pinned root keys must have signed version 1 of the root (default 1)
+      --site string              directory for the repositories' files, to serve over HTTP
+      --work-dir string          where to unpack the bundle (default: the system temporary directory)
+```
+
+## kubepkg bundle inspect
+
+List what a bundle carries, without checking it
+
+```text
+kubepkg bundle inspect <file.tar>
+```
+
 ## kubepkg cluster add
 
 Register a member cluster: its kubeconfig goes into a Secret in the hub

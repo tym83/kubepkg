@@ -57,21 +57,7 @@ type RenderOptions struct {
 // dependsOn, Argo CD Applications with sync waves, or a helmfile with
 // needs. Requirements on APIs no package provides are assumed served.
 func Render(ctx context.Context, store *repo.Store, policy repo.Policy, reqs []resolve.Request, o RenderOptions) ([]byte, error) {
-	cat := store.Catalog(ctx, o.Variant, policy)
-	st := resolve.State{Packages: map[string]resolve.Installed{}, APIs: assumedAPIs(cat)}
-	p, err := resolve.Resolve(cat, st, reqs)
-	if err != nil {
-		return nil, err
-	}
-	chosen := map[string]resolve.Release{}
-	for _, ch := range p.Changes {
-		for _, r := range cat[ch.Name] {
-			if r.Version == ch.To {
-				chosen[ch.Name] = r
-			}
-		}
-	}
-	order, providers, err := packageOrder(chosen)
+	chosen, order, providers, err := resolveFresh(ctx, store, policy, reqs, o.Variant)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +135,30 @@ func Render(ctx context.Context, store *repo.Store, policy repo.Policy, reqs []r
 
 // assumedAPIs lists the api: capabilities required in the catalog that no
 // package provides: without a cluster to ask, they are taken as served.
+// resolveFresh resolves the requested packages and their requirements as
+// install would for an empty cluster, and orders them.
+func resolveFresh(ctx context.Context, store *repo.Store, policy repo.Policy, reqs []resolve.Request, variant string) (map[string]resolve.Release, []string, map[string]string, error) {
+	cat := store.Catalog(ctx, variant, policy)
+	st := resolve.State{Packages: map[string]resolve.Installed{}, APIs: assumedAPIs(cat)}
+	p, err := resolve.Resolve(cat, st, reqs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	chosen := map[string]resolve.Release{}
+	for _, ch := range p.Changes {
+		for _, r := range cat[ch.Name] {
+			if r.Version == ch.To {
+				chosen[ch.Name] = r
+			}
+		}
+	}
+	order, providers, err := packageOrder(chosen)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return chosen, order, providers, nil
+}
+
 func assumedAPIs(cat resolve.Catalog) map[string]bool {
 	provided := map[string]bool{}
 	for _, rs := range cat {
@@ -228,13 +238,23 @@ func requiredPackages(r resolve.Release, providers map[string]string) []string {
 }
 
 func admittedSpec(ctx context.Context, store *repo.Store, policy repo.Policy, name, version string) (*v1alpha1.PackageSourceSpec, error) {
+	_, v, err := admittedVersion(ctx, store, policy, name, version)
+	if err != nil {
+		return nil, err
+	}
+	return &v.Spec, nil
+}
+
+// admittedVersion finds a resolved version in the repository the package
+// is taken from, newest build first.
+func admittedVersion(ctx context.Context, store *repo.Store, policy repo.Policy, name, version string) (string, repo.Version, error) {
 	repoName, versions, _ := store.Offered(name, "")
 	for _, v := range versions {
 		if v.Version == version && policy.AdmitVersion(ctx, repoName, name, v) == nil {
-			return &v.Spec, nil
+			return repoName, v, nil
 		}
 	}
-	return nil, fmt.Errorf("package %s %s vanished from repository %s", name, version, repoName)
+	return "", repo.Version{}, fmt.Errorf("package %s %s vanished from repository %s", name, version, repoName)
 }
 
 // renderComponents describes a package's components the way the operator
