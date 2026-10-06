@@ -184,17 +184,90 @@ func setCmd(cl *cluster) *cobra.Command {
 				return err
 			}
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "SET\tCLUSTER\tREADY\tSTATUS")
+			fmt.Fprintln(w, "SET\tCLUSTER\tUPDATED\tREADY\tSTATUS")
 			for _, s := range list.Items {
 				if len(s.Status.Clusters) == 0 {
-					fmt.Fprintf(w, "%s\t-\t-\tno clusters selected\n", s.Name)
+					fmt.Fprintf(w, "%s\t-\t-\t-\tno clusters selected\n", s.Name)
 				}
 				for _, cs := range s.Status.Clusters {
-					fmt.Fprintf(w, "%s\t%s\t%d/%d\t%s\n", s.Name, cs.Name, cs.Ready, cs.Total, dash(cs.Message))
+					fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\t%s\n", s.Name, cs.Name, yesNo(cs.Updated), cs.Ready, cs.Total, dash(cs.Message))
 				}
 			}
 			return w.Flush()
 		},
-	})
+	}, setStatusCmd(cl))
 	return cmd
+}
+
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
+func setStatusCmd(cl *cluster) *cobra.Command {
+	return &cobra.Command{
+		Use:   "status <set>",
+		Short: "Show which version of each package every cluster of a set runs",
+		Long: `Status prints one row per cluster and one column per package of the
+set, with the version each cluster runs, so clusters that lag behind
+stand out. A version that differs from the most common one is marked *.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := cl.client()
+			if err != nil {
+				return err
+			}
+			s := &v1alpha1.PackageSet{}
+			if err := c.Get(cmd.Context(), client.ObjectKey{Name: args[0]}, s); err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			if cond := meta.FindStatusCondition(s.Status.Conditions, "Ready"); cond != nil {
+				fmt.Fprintf(out, "%s: %s\n", s.Name, cond.Message)
+			}
+			if cond := meta.FindStatusCondition(s.Status.Conditions, "RolloutPaused"); cond != nil && cond.Status == metav1.ConditionTrue {
+				fmt.Fprintf(out, "rollout paused: %s\n", cond.Message)
+			}
+			fmt.Fprintln(out)
+			// The most common version of each package is the reference.
+			common := map[string]string{}
+			for _, p := range s.Spec.Packages {
+				count := map[string]int{}
+				for _, cs := range s.Status.Clusters {
+					if v := cs.Versions[p.Name]; v != "" {
+						count[v]++
+					}
+				}
+				best := 0
+				for v, n := range count {
+					if n > best || (n == best && v > common[p.Name]) {
+						common[p.Name], best = v, n
+					}
+				}
+			}
+			w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+			fmt.Fprint(w, "CLUSTER\tUPDATED")
+			for _, p := range s.Spec.Packages {
+				fmt.Fprintf(w, "\t%s", strings.ToUpper(p.Name))
+			}
+			fmt.Fprintln(w)
+			for _, cs := range s.Status.Clusters {
+				fmt.Fprintf(w, "%s\t%s", cs.Name, yesNo(cs.Updated))
+				for _, p := range s.Spec.Packages {
+					v := cs.Versions[p.Name]
+					switch {
+					case v == "":
+						v = "-"
+					case v != common[p.Name]:
+						v += " *"
+					}
+					fmt.Fprintf(w, "\t%s", v)
+				}
+				fmt.Fprintln(w)
+			}
+			return w.Flush()
+		},
+	}
 }

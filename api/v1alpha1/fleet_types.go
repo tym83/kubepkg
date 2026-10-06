@@ -24,6 +24,10 @@ import (
 // the value is the PackageSet name. Objects without it are never touched.
 const LabelPackageSet = "kubepkg.dev/package-set"
 
+// AnnotationPackageSetChange on an object a set wrote names the change of
+// the set it carries.
+const AnnotationPackageSetChange = "kubepkg.dev/package-set-change"
+
 // SecretKeyRef points at one key of a Secret.
 type SecretKeyRef struct {
 	// +required
@@ -106,6 +110,30 @@ type PackageSetSpec struct {
 	Repositories []PackageSetRepository `json:"repositories,omitempty"`
 	// +optional
 	Packages []PackageSetPackage `json:"packages,omitempty"`
+	// Rollout says how a change to the set reaches its clusters; without
+	// it every cluster gets the change at once.
+	// +optional
+	Rollout *PackageSetRollout `json:"rollout,omitempty"`
+}
+
+// PackageSetRollout paces a change to a set across its clusters. A change
+// is any edit of the set's repositories or packages; a cluster has it once
+// every object the set writes there carries it, and is done with it once
+// every package is ready with it.
+type PackageSetRollout struct {
+	// MaxInProgress is how many clusters may be taking a change at once;
+	// 0 means all of them.
+	// +optional
+	MaxInProgress int32 `json:"maxInProgress,omitempty"`
+	// Canary picks clusters that take a change first; the others follow
+	// once every canary is done with it.
+	// +optional
+	Canary *metav1.LabelSelector `json:"canary,omitempty"`
+	// PauseOnFailure stops a change from reaching more clusters once a
+	// cluster that took it reports a failed or rolled back upgrade.
+	// Default true. A new change to the set resumes the rollout.
+	// +optional
+	PauseOnFailure *bool `json:"pauseOnFailure,omitempty"`
 }
 
 // PackageSetClusterStatus is the set's state on one cluster.
@@ -116,6 +144,12 @@ type PackageSetClusterStatus struct {
 	Total int32 `json:"total"`
 	// +optional
 	Message string `json:"message,omitempty"`
+	// Updated is true once the cluster has the set's current change.
+	// +optional
+	Updated bool `json:"updated,omitempty"`
+	// Versions are the versions the set's packages run on the cluster.
+	// +optional
+	Versions map[string]string `json:"versions,omitempty"`
 }
 
 // PackageSetStatus aggregates the set over its clusters.
@@ -127,12 +161,19 @@ type PackageSetStatus struct {
 	// ReadyClusters counts clusters where every package is ready.
 	// +optional
 	ReadyClusters int32 `json:"readyClusters,omitempty"`
+	// UpdatedClusters counts clusters that have the current change.
+	// +optional
+	UpdatedClusters int32 `json:"updatedClusters,omitempty"`
+	// Change identifies the set's current repositories and packages.
+	// +optional
+	Change string `json:"change,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName={pkgset}
-// +kubebuilder:printcolumn:name="Clusters",type="integer",JSONPath=".status.readyClusters"
+// +kubebuilder:printcolumn:name="Ready Clusters",type="integer",JSONPath=".status.readyClusters"
+// +kubebuilder:printcolumn:name="Updated",type="integer",JSONPath=".status.updatedClusters"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].message"
 

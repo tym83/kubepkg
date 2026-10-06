@@ -385,6 +385,18 @@ List PackageSets and how far each cluster got
 kubepkg set list
 ```
 
+## kubepkg set status
+
+Show which version of each package every cluster of a set runs
+
+Status prints one row per cluster and one column per package of the
+set, with the version each cluster runs, so clusters that lag behind
+stand out. A version that differs from the most common one is marked *.
+
+```text
+kubepkg set status <set>
+```
+
 ## kubepkg trust root new
 
 Make version 1 of a root

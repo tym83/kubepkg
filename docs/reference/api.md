@@ -141,18 +141,31 @@ Short names: `pkgset`.
 | `repositories[].spec.trust.rootKeys` | []string, required | RootKeys are PEM encoded ed25519 keys of version 1 of the root. |
 | `repositories[].spec.trust.rootThreshold` | integer | RootThreshold is how many of them must have signed it. Default 1. |
 | `repositories[].spec.url` | string, required | URL of the index, e.g. https://packages.example.org/index.yaml. The scheme picks the fetcher; https:// and http:// are built in. |
+| `rollout` | object | Rollout says how a change to the set reaches its clusters; without it every cluster gets the change at once. |
+| `rollout.canary` | object | Canary picks clusters that take a change first; the others follow once every canary is done with it. |
+| `rollout.canary.matchExpressions` | []object | matchExpressions is a list of label selector requirements. The requirements are ANDed. |
+| `rollout.canary.matchExpressions[].key` | string, required | key is the label key that the selector applies to. |
+| `rollout.canary.matchExpressions[].operator` | string, required | operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist. |
+| `rollout.canary.matchExpressions[].values` | []string | values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch. |
+| `rollout.canary.matchLabels` | object | matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed. |
+| `rollout.maxInProgress` | integer | MaxInProgress is how many clusters may be taking a change at once; 0 means all of them. |
+| `rollout.pauseOnFailure` | boolean | PauseOnFailure stops a change from reaching more clusters once a cluster that took it reports a failed or rolled back upgrade. Default true. A new change to the set resumes the rollout. |
 
 ### PackageSet.status
 
 | Field | Type | Description |
 |---|---|---|
+| `change` | string | Change identifies the set's current repositories and packages. |
 | `clusters` | []object |  |
 | `clusters[].message` | string |  |
 | `clusters[].name` | string, required |  |
 | `clusters[].ready` | integer, required | Ready and Total count the set's packages on the cluster. |
 | `clusters[].total` | integer, required |  |
+| `clusters[].updated` | boolean | Updated is true once the cluster has the set's current change. |
+| `clusters[].versions` | object | Versions are the versions the set's packages run on the cluster. |
 | `conditions` | []object |  |
 | `readyClusters` | integer | ReadyClusters counts clusters where every package is ready. |
+| `updatedClusters` | integer | UpdatedClusters counts clusters that have the current change. |
 
 
 ## PackageSource
