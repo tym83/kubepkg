@@ -139,6 +139,10 @@ func (o PushOptions) repository(ref string) (*remote.Repository, error) {
 	return repo, nil
 }
 
+// Open opens the OCI repository of an oci:// reference with the push
+// options' transport and credentials.
+func (o PushOptions) Open(ref string) (*remote.Repository, error) { return o.repository(ref) }
+
 func pushArtifact(ctx context.Context, ref string, opts PushOptions, a artifact) (PushResult, error) {
 	repo, err := opts.repository(ref)
 	if err != nil {
@@ -346,4 +350,55 @@ func PushChart(ctx context.Context, dir, repository, name, version string, opts 
 		config: config, configType: ChartConfigMediaType,
 		layer: layer, layerType: ChartMediaType, content: content,
 	})
+}
+
+// PushChartArchive publishes a chart archive exactly as it is at
+// <repository>/<name>:<version>, so the copy keeps the archive digest a
+// package pins. It is how kubepkg bundle import fills a mirror.
+func PushChartArchive(ctx context.Context, archive []byte, repository, name, version string, opts PushOptions) (PushResult, error) {
+	meta, err := chartMetadataOf(archive, name)
+	if err != nil {
+		return PushResult{}, err
+	}
+	config, err := json.Marshal(meta)
+	if err != nil {
+		return PushResult{}, err
+	}
+	ref := strings.TrimSuffix(repository, "/") + "/" + name + ":" + strings.ReplaceAll(version, "+", "_")
+	// A mirror holds copies, not builds: the archive digest is the
+	// identity, and a tag that already holds it is left alone.
+	return pushArtifact(ctx, ref, opts, artifact{
+		config: config, configType: ChartConfigMediaType,
+		layer: archive, layerType: ChartMediaType, content: digest.FromBytes(archive).String(),
+	})
+}
+
+// chartMetadataOf reads <name>/Chart.yaml from a chart archive.
+func chartMetadataOf(archive []byte, name string) (map[string]any, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		return nil, err
+	}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return nil, fmt.Errorf("chart archive has no %s/Chart.yaml", name)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if h.Name != name+"/Chart.yaml" {
+			continue
+		}
+		raw, err := io.ReadAll(io.LimitReader(tr, 1<<20))
+		if err != nil {
+			return nil, err
+		}
+		meta := map[string]any{}
+		if err := yaml.Unmarshal(raw, &meta); err != nil {
+			return nil, fmt.Errorf("Chart.yaml: %w", err)
+		}
+		return meta, nil
+	}
 }

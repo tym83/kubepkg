@@ -141,7 +141,15 @@ func RenderedImages(res *Result) ([]string, error) {
 // renderChart renders a chart with its default values, as helm install
 // would, and returns the documents it installs: templates of the chart
 // and its enabled subcharts, and their crds/ directories.
-func renderChart(dir string) ([]string, error) {
+func renderChart(dir string) ([]string, error) { return RenderChart(dir, nil) }
+
+// RenderChart renders a chart with values over its defaults, as helm
+// install would, and returns the documents it installs: templates of the
+// chart and its enabled subcharts, and their crds/ directories.
+func RenderChart(dir string, values map[string]any) ([]string, error) {
+	if values == nil {
+		values = map[string]any{}
+	}
 	loaded, err := loader.Load(dir)
 	if err != nil {
 		return nil, err
@@ -152,10 +160,10 @@ func renderChart(dir string) ([]string, error) {
 	}
 	// Drop subcharts their conditions disable, as helm install does, so
 	// their templates and CRDs are not counted.
-	if err := chartutilv2.ProcessDependencies(ch, map[string]any{}); err != nil {
+	if err := chartutilv2.ProcessDependencies(ch, values); err != nil {
 		return nil, err
 	}
-	vals, err := util.ToRenderValues(ch, map[string]any{}, common.ReleaseOptions{Name: "validate", Namespace: "validate", IsInstall: true}, common.DefaultCapabilities)
+	vals, err := util.ToRenderValues(ch, values, common.ReleaseOptions{Name: "validate", Namespace: "validate", IsInstall: true}, common.DefaultCapabilities)
 	if err != nil {
 		return nil, err
 	}
