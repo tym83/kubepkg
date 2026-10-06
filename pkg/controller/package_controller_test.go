@@ -792,3 +792,39 @@ func TestAdoptTakesOverOnceInTheReleaseItNames(t *testing.T) {
 		t.Fatalf("after an upgrade: adopted %v, calls %v", e.be.adopted, e.be.calls)
 	}
 }
+
+func TestAComponentThatMovesLeavesItsOldPlaceFirst(t *testing.T) {
+	e := newEnv(t)
+	e.create(mkSource("logs", "1.0.0", true, "agent"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "logs"}})
+	e.reconcile("logs")
+	e.reconcile("logs")
+
+	p := e.pkg("logs")
+	p.Spec.Components = map[string]v1beta1.PackageComponent{"agent": {Namespace: "logging-agent"}}
+	if err := e.c.Update(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	e.be.calls = nil
+	e.reconcile("logs")
+	e.reconcile("logs")
+	if len(e.be.calls) < 2 || e.be.calls[0] != "uninstall ns-logs/agent" || !strings.HasPrefix(e.be.calls[1], "apply logging-agent/agent ") {
+		t.Fatalf("calls: %v", e.be.calls)
+	}
+	rev := &v1beta1.PackageRevision{}
+	if err := e.c.Get(context.Background(), types.NamespacedName{Name: "logs-2"}, rev); err != nil {
+		t.Fatal(err)
+	}
+	if rev.Spec.RollbackSafe {
+		t.Fatal("a revision that moved a component claims it can be rolled back")
+	}
+
+	// Deleting the package takes away every release it ever made.
+	e.be.releases["ns-logs/agent"] = []fakeRelease{{chart: "left behind"}}
+	if err := e.c.Delete(context.Background(), e.pkg("logs")); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile("logs")
+	if len(e.be.releases) != 0 {
+		t.Fatalf("left behind: %v", e.be.releases)
+	}
+}

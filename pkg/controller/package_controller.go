@@ -270,7 +270,7 @@ func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1beta1.Package, 
 			Annotations: map[string]string{AnnotationDesiredDigest: d.digest},
 		},
 		Spec: v1beta1.PackageRevisionSpec{
-			Package: pkg.Name, Revision: n, Version: d.version, Variant: d.variant, RollbackSafe: d.rollbackSafe,
+			Package: pkg.Name, Revision: n, Version: d.version, Variant: d.variant, RollbackSafe: d.rollbackSafe && len(moved(lastGood(*revs, n), d)) == 0,
 		},
 	}
 	for _, c := range d.components {
@@ -303,6 +303,15 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1beta1.Package, 
 	// delivery tool supporting it.
 	if res, done, err := r.runHooks(ctx, pkg, rev, d, revs); done {
 		return res, err
+	}
+	// A component that moved to another namespace or release name leaves
+	// first: its cluster-wide objects belong to the old release, and the
+	// new one could not be installed next to it.
+	if err := r.removeMoved(ctx, pkg, d, *revs, rev); errors.Is(err, backend.ErrUninstalling) {
+		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing, fmt.Sprintf("applying revision %d: removing components from where they were", rev.Spec.Revision))
+		return ctrl.Result{RequeueAfter: progressRequeue}, nil
+	} else if err != nil {
+		return ctrl.Result{}, err
 	}
 	var applied []desiredComponent
 	for _, c := range d.components {
@@ -593,6 +602,35 @@ func (r *PackageReconciler) rollbackTo(ctx context.Context, pkg *v1beta1.Package
 	setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonUpgradeRolledBack, restored.Status.Message)
 	countRevision(pkg.Name, outcomeRolledBack)
 	return ctrl.Result{}, clear()
+}
+
+// moved lists the releases of prev whose components d installs elsewhere.
+func moved(prev *v1beta1.PackageRevision, d *desiredState) []v1beta1.ComponentSnapshot {
+	if prev == nil {
+		return nil
+	}
+	now := map[string]string{}
+	for _, c := range d.components {
+		now[c.snapshot.Name] = c.snapshot.Namespace + "/" + c.snapshot.ReleaseName
+	}
+	var out []v1beta1.ComponentSnapshot
+	for _, c := range prev.Spec.Components {
+		if where, ok := now[c.Name]; ok && where != c.Namespace+"/"+c.ReleaseName {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// removeMoved uninstalls the old releases of components that moved. Such
+// a revision cannot be rolled back, since the old release is gone.
+func (r *PackageReconciler) removeMoved(ctx context.Context, pkg *v1beta1.Package, d *desiredState, revs []v1beta1.PackageRevision, rev *v1beta1.PackageRevision) error {
+	for _, c := range moved(lastGood(revs, rev.Spec.Revision), d) {
+		if err := r.Backend.Uninstall(ctx, backend.Component{Package: pkg.Name, Name: c.Name, ReleaseName: c.ReleaseName, Namespace: c.Namespace}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // removeOrphans uninstalls components the previous revision had and this
