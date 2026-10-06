@@ -17,30 +17,55 @@ limitations under the License.
 package operator_test
 
 import (
+	"context"
 	"flag"
+	"fmt"
+	"strings"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/tym83/kubepkg/pkg/backend"
-	"github.com/tym83/kubepkg/pkg/controller"
+	"github.com/tym83/kubepkg/pkg/cli"
 	"github.com/tym83/kubepkg/pkg/operator"
+	"github.com/tym83/kubepkg/pkg/repo"
 )
 
-// A distribution's own operator: its API group and platform settings as
-// defaults, and a backend of its own next to the standard ones.
-func Example_distribution() {
-	opts := operator.DefaultOptions()
-	opts.Profile.Group = "packages.example.com"
-	opts.Profile.ValuesSecret = "example-system/platform"
-	opts.Profile.NamespaceLabels = map[string]string{"example.com/managed": "true"}
-	opts.Backends["example"] = func(env operator.Env) (backend.Backend, controller.Preparer, error) {
-		// Wrap or replace a standard backend, e.g. to install through the
-		// distribution's own delivery system.
-		return operator.HelmBackend(env)
+// allowedRegistries admits only versions whose charts come from the
+// distribution's own registry.
+type allowedRegistries struct{ prefix string }
+
+func (allowedRegistries) AdmitIndex(context.Context, string, []byte, *repo.Index) error { return nil }
+
+func (p allowedRegistries) AdmitVersion(_ context.Context, _, pkg string, v repo.Version) error {
+	for _, variant := range v.Spec.Variants {
+		for _, c := range variant.Components {
+			if c.Chart != nil && !strings.HasPrefix(c.Chart.Repository, p.prefix) {
+				return fmt.Errorf("%s %s: chart %s is not from %s", pkg, v.Version, c.Chart.Repository, p.prefix)
+			}
+		}
 	}
-	opts.Backend = "example"
+	return nil
+}
+
+// A distribution's operator: its own API group, its own trust rules, the
+// standard flags.
+func Example_operator() {
+	opts := operator.DefaultOptions()
+	opts.Profile.Group = "packages.example.org"
+	opts.Policy = allowedRegistries{prefix: "oci://registry.example.org/"}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+	if err := operator.Run(ctrl.SetupSignalHandler(), ctrl.GetConfigOrDie(), opts); err != nil {
+		panic(err)
+	}
+}
 
-	_ = operator.Run(ctrl.SetupSignalHandler(), ctrl.GetConfigOrDie(), opts)
+// The matching CLI, with a command of the distribution's own.
+func Example_cli() {
+	o := cli.DefaultOptions()
+	o.Name, o.Short, o.APIGroup = "exctl", "Example Platform packages", "packages.example.org"
+	o.Policy = allowedRegistries{prefix: "oci://registry.example.org/"}
+	root := cli.NewRootCommand(o)
+	if err := root.Execute(); err != nil {
+		panic(err)
+	}
 }

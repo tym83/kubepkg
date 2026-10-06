@@ -1,6 +1,6 @@
 CONTROLLER_GEN ?= $(shell go env GOPATH)/bin/controller-gen
 
-.PHONY: generate test build crds-for-group chart-crds
+.PHONY: generate test build crds-for-group chart-crds docs
 
 generate:
 	$(CONTROLLER_GEN) object paths=./api/...
@@ -23,3 +23,7 @@ crds-for-group:
 chart-crds:
 	rm -f charts/kubepkg/files/crds/*.yaml
 	cp config/crd/*.yaml charts/kubepkg/files/crds/
+
+# Reference pages generated from the commands and the CRDs.
+docs:
+	go run ./hack/gendocs config/crd docs/reference/cli.md docs/reference/api.md
