@@ -105,12 +105,22 @@ type Chart struct {
 	// files in the chart, for changes values cannot express.
 	Overlay string `json:"overlay,omitempty"`
 	// Exclude drops objects from wrapped manifests, e.g. the Namespace an
-	// upstream bundle creates, which kubepkg creates itself.
+	// upstream bundle creates, which kubepkg creates itself. For a chart
+	// source it drops objects from the crds/ directories of the chart and
+	// its subcharts; templates are rendered at install time and cannot be
+	// edited here.
 	Exclude []Selector `json:"exclude,omitempty"`
 	// Patches change objects of wrapped manifests with JSON merge patches
 	// (RFC 7386; null removes a field): the recipe's equivalent of a
-	// Debian patch to the upstream.
+	// Debian patch to the upstream. For a chart source they apply to the
+	// crds/ directories, like Exclude.
 	Patches []Patch `json:"patches,omitempty"`
+	// CRDsDir puts the CRDs of wrapped manifests in the chart's crds/
+	// directory instead of its templates. Helm keeps templates in its
+	// release record, which holds about 1 MiB, so large CRDs only fit in
+	// crds/; Helm installs those but does not upgrade them, which
+	// install.upgradeCRDs: CreateReplace arranges.
+	CRDsDir bool `json:"crdsDir,omitempty"`
 	// Steps run step plugins on the finished chart, in order: what a
 	// distribution needs beyond values and overlays, such as moving images
 	// to its own registry.

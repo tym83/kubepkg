@@ -92,7 +92,27 @@ func Validate(ctx context.Context, dir string, opts Options) Report {
 		}
 	}
 	checkImages(res, &rep)
+	checkCRDUpgrades(res, &rep)
 	return rep
+}
+
+// checkCRDUpgrades warns about charts that ship CRDs in crds/, which Helm
+// installs but never upgrades, when the component does not ask kubepkg to.
+func checkCRDUpgrades(res *Result, rep *Report) {
+	for _, v := range res.Recipe.Spec.Package.Variants {
+		for _, c := range v.Components {
+			if c.Path == "" || (c.Install != nil && c.Install.UpgradeCRDs != "") {
+				continue
+			}
+			loaded, err := loader.Load(filepath.Join(res.TreeDir, c.Path))
+			if err != nil {
+				continue
+			}
+			if ch, ok := loaded.(*chartv2.Chart); ok && len(ch.CRDObjects()) > 0 {
+				rep.Warnings = append(rep.Warnings, fmt.Sprintf("component %s ships CRDs in crds/, which Helm installs but never upgrades; set install.upgradeCRDs: CreateReplace to upgrade them with the package", c.Name))
+			}
+		}
+	}
 }
 
 // checkImages compares the images the charts run with package.images.

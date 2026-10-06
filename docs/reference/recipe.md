@@ -49,8 +49,9 @@ Exactly one of `url`, `chart`, `dir` or `plugin`.
 | `from` | list of source names, required | one source that is a chart, used as the chart; or sources of plain manifests, wrapped into a chart in the order given |
 | `values` | object | merged over the chart's `values.yaml`; the package's defaults |
 | `overlay` | string | a directory next to the recipe whose files replace or add files in the chart |
-| `exclude` | list of Selector | objects dropped from wrapped manifests |
-| `patches` | list of Patch | JSON merge patches applied to objects of wrapped manifests |
+| `exclude` | list of Selector | objects dropped from wrapped manifests; for a chart source, objects dropped from the `crds/` directories of the chart and its subcharts, packed ones included. A file left empty is removed |
+| `patches` | list of Patch | JSON merge patches applied to objects of wrapped manifests; for a chart source, to its `crds/` directories |
+| `crdsDir` | bool | wrapped manifests only: put their CRDs in the chart's `crds/` instead of its templates. Helm keeps templates in a release record of about 1 MiB, so large CRDs fit only in `crds/`. Helm does not upgrade `crds/`; set `install.upgradeCRDs: CreateReplace` on the component |
 | `steps` | list of `{plugin, with}` | step plugins run on the finished chart, in order: Go code, or the executable `kubepkg-step-<plugin>` |
 
 ### Selector
