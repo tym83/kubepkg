@@ -75,6 +75,10 @@ type Index struct {
 	// with a root must set it.
 	Expires  *metav1.Time       `json:"expires,omitempty"`
 	Packages map[string]Package `json:"packages"`
+
+	// Unknown lists versions this kubepkg left out because their specs
+	// have fields it does not know: built for a newer kubepkg.
+	Unknown []string `json:"-"`
 }
 
 // Package is every published version of one package.
@@ -125,6 +129,10 @@ func Build(ctx context.Context, dir string, charts ChartFetcher, opts BuildOptio
 	now := metav1.NewTime(time.Now().UTC().Truncate(time.Second))
 	idx := &Index{APIVersion: IndexAPIVersion, Kind: IndexKind, Generated: &now, Packages: map[string]Package{}}
 	published := map[string]string{}
+	if opts.Base != nil && len(opts.Base.Unknown) > 0 {
+		// Merging would drop them from the published index.
+		return nil, fmt.Errorf("the published index has versions built by a newer kubepkg (%s); index it with that release", strings.Join(opts.Base.Unknown, ", "))
+	}
 	if opts.Base != nil {
 		for name, p := range opts.Base.Packages {
 			p.Versions = append([]Version(nil), p.Versions...)
@@ -316,10 +324,22 @@ func Parse(raw []byte) (*Index, error) {
 	if idx.Kind != IndexKind {
 		return nil, fmt.Errorf("not a repository index (kind %q)", idx.Kind)
 	}
+	// The specs as written, to tell a newer spec from a forged one.
+	var specs struct {
+		Packages map[string]struct {
+			Versions []struct {
+				Spec json.RawMessage `json:"spec"`
+			} `json:"versions"`
+		} `json:"packages"`
+	}
+	if err := yaml.Unmarshal(raw, &specs); err != nil {
+		return nil, fmt.Errorf("decode index: %w", err)
+	}
 	// An index comes from the network: check what the rest of kubepkg
 	// relies on instead of trusting it.
 	for name, p := range idx.Packages {
-		for _, v := range p.Versions {
+		kept := p.Versions[:0]
+		for vi, v := range p.Versions {
 			if _, err := semver.StrictNewVersion(strings.TrimPrefix(v.Version, "v")); err != nil {
 				return nil, fmt.Errorf("package %s: version %q is not exact semver", name, v.Version)
 			}
@@ -331,10 +351,27 @@ func Parse(raw []byte) (*Index, error) {
 				return nil, err
 			}
 			if d != v.Digest {
+				// A spec with fields this release does not know cannot
+				// match: it was built for a newer kubepkg. Leave that
+				// version out rather than refuse the whole index; the
+				// signature still covers the file.
+				var strict v1beta1.PackageSourceSpec
+				if err := yaml.UnmarshalStrict(specs.Packages[name].Versions[vi].Spec, &strict); err != nil && strings.Contains(err.Error(), "unknown field") {
+					idx.Unknown = append(idx.Unknown, fmt.Sprintf("%s %s build %d", name, v.Version, v.Build))
+					continue
+				}
 				return nil, fmt.Errorf("package %s %s build %d: spec does not match its digest", name, v.Version, v.Build)
 			}
+			kept = append(kept, v)
 		}
+		if len(kept) == 0 {
+			delete(idx.Packages, name)
+			continue
+		}
+		p.Versions = kept
+		idx.Packages[name] = p
 	}
+	sort.Strings(idx.Unknown)
 	return &idx, nil
 }
 
