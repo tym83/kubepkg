@@ -19,13 +19,14 @@ package build
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 
 	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/common/util"
 	"helm.sh/helm/v4/pkg/chart/loader"
+	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
+	chartutilv2 "helm.sh/helm/v4/pkg/chart/v2/util"
 	"helm.sh/helm/v4/pkg/engine"
 	"sigs.k8s.io/yaml"
 
@@ -95,8 +96,17 @@ func Validate(ctx context.Context, dir string, opts Options) Report {
 // chartCRDs lists the CRDs a chart installs with its default values, from
 // its templates and its crds/ directory.
 func chartCRDs(dir string) ([]string, error) {
-	ch, err := loader.Load(dir)
+	loaded, err := loader.Load(dir)
 	if err != nil {
+		return nil, err
+	}
+	ch, ok := loaded.(*chartv2.Chart)
+	if !ok {
+		return nil, fmt.Errorf("%s: unsupported chart API version", dir)
+	}
+	// Drop subcharts their conditions disable, as helm install does, so
+	// their templates and CRDs are not counted.
+	if err := chartutilv2.ProcessDependencies(ch, map[string]any{}); err != nil {
 		return nil, err
 	}
 	vals, err := util.ToRenderValues(ch, map[string]any{}, common.ReleaseOptions{Name: "validate", Namespace: "validate", IsInstall: true}, common.DefaultCapabilities)
@@ -111,14 +121,10 @@ func chartCRDs(dir string) ([]string, error) {
 	for _, out := range rendered {
 		docs = append(docs, out)
 	}
-	_ = filepath.WalkDir(filepath.Join(dir, "crds"), func(p string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
-			if raw, err := os.ReadFile(p); err == nil {
-				docs = append(docs, string(raw))
-			}
-		}
-		return nil
-	})
+	// crds/ of the chart and of every enabled subchart, packed or not.
+	for _, crd := range ch.CRDObjects() {
+		docs = append(docs, string(crd.File.Data))
+	}
 	seen := map[string]bool{}
 	for _, text := range docs {
 		for _, doc := range docSeparator.Split(text, -1) {

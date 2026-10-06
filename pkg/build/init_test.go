@@ -152,3 +152,48 @@ func TestInitFromManifestsThenValidate(t *testing.T) {
 		t.Fatalf("an undeclared CRD passed: %+v", rep)
 	}
 }
+
+func crd(name string) string {
+	return strings.Replace(crdYAML, "widgets.example.org}", name+"}", 1)
+}
+
+func TestChartCRDsFromSubchartsAndRenderedFiles(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"Chart.yaml": `apiVersion: v2
+name: gateway
+version: 1.0.0
+dependencies:
+  - {name: gateway-crds, version: 1.0.0}
+  - {name: extra, version: 1.0.0, condition: extra.enabled}
+`,
+		"values.yaml": "extra: {enabled: false}\n",
+		// Several CRDs from one file, the way some charts add annotations.
+		"crds.yaml": crd("a.example.org") + "---\n" + crd("b.example.org"),
+		"templates/crds.yaml": `{{- range .Files.Get "crds.yaml" | splitList "---" }}
+{{ . }}
+---
+{{- end }}
+`,
+		"charts/gateway-crds/Chart.yaml":     "apiVersion: v2\nname: gateway-crds\nversion: 1.0.0\n",
+		"charts/gateway-crds/crds/many.yaml": crd("c.example.org") + "---\n" + crd("d.example.org"),
+		"charts/extra/Chart.yaml":            "apiVersion: v2\nname: extra\nversion: 1.0.0\n",
+		"charts/extra/crds/off.yaml":         crd("off.example.org"),
+	}
+	for n, body := range files {
+		p := filepath.Join(dir, n)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := chartCRDs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "a.example.org b.example.org c.example.org d.example.org"; strings.Join(got, " ") != want {
+		t.Fatalf("CRDs = %v, want %s", got, want)
+	}
+}
