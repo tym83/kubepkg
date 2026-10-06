@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
@@ -65,6 +66,12 @@ under the same version and build is an error.`,
 				cacheDir = filepath.Join(d, "kubepkg")
 			}
 			fetcher := &source.Fetcher{CacheDir: cacheDir, PlainHTTP: push.PlainHTTP, CredentialsFile: push.CredentialsFile}
+			if registry != "" {
+				// --plain-http is for the registry the package goes to;
+				// public sources such as ghcr.io stay on TLS.
+				host := strings.SplitN(strings.TrimPrefix(registry, "oci://"), "/", 2)[0]
+				fetcher.PlainHTTPHosts = []string{host}
+			}
 			res, err := build.Build(cmd.Context(), args[0], build.Options{Fetcher: fetcher, WorkDir: workDir})
 			if err != nil {
 				return err
