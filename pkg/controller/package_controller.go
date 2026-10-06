@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -160,11 +161,8 @@ func (r *PackageReconciler) reconcile(ctx context.Context, pkg *v1beta1.Package)
 		return ctrl.Result{}, nil
 	}
 	if r.CRDs != nil {
-		if owner, crd, err := r.CRDs.Conflict(ctx, pkg.Name, src.Spec.CRDs); err != nil {
-			return ctrl.Result{}, err
-		} else if owner != "" {
-			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonCRDOwnershipConflict, fmt.Sprintf("CRD %s is owned by package %s", crd, owner))
-			return ctrl.Result{}, nil
+		if res, blocked, err := r.checkCRDs(ctx, pkg, src); blocked || err != nil {
+			return res, err
 		}
 	}
 
@@ -254,6 +252,13 @@ func (r *PackageReconciler) observe(ctx context.Context, pkg *v1beta1.Package, r
 
 // applyNew records a new revision and applies it.
 func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1beta1.Package, d *desiredState, revs *[]v1beta1.PackageRevision, src *v1beta1.PackageSource) (ctrl.Result, error) {
+	if r.CRDs != nil && pkg.Spec.CRDPolicy != v1beta1.CRDPolicyDelete {
+		// A CRD the new version stops shipping would be deleted by its
+		// release, and every object of it with it; keep it instead.
+		if err := r.CRDs.Retain(ctx, pkg.Name, src.Spec.CRDs); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 	n := int64(1)
 	if l := lastOf(*revs); l != nil {
 		n = l.Spec.Revision + 1
@@ -613,6 +618,41 @@ func (r *PackageReconciler) removeOrphans(ctx context.Context, pkg *v1beta1.Pack
 	return nil
 }
 
+// checkCRDs stops a package whose CRDs another package owns, unless that
+// package's chosen version no longer lists them: then they move to this
+// package, which takes them over into its own release.
+func (r *PackageReconciler) checkCRDs(ctx context.Context, pkg *v1beta1.Package, src *v1beta1.PackageSource) (ctrl.Result, bool, error) {
+	for {
+		owner, crd, err := r.CRDs.Conflict(ctx, pkg.Name, src.Spec.CRDs)
+		if err != nil || owner == "" {
+			return ctrl.Result{}, false, err
+		}
+		other := &v1beta1.PackageSource{}
+		err = r.Get(ctx, types.NamespacedName{Name: owner}, other)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, true, err
+		}
+		if err == nil && slices.Contains(other.Spec.CRDs, crd) {
+			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonCRDOwnershipConflict, fmt.Sprintf("CRD %s is owned by package %s", crd, owner))
+			return ctrl.Result{}, true, nil
+		}
+		if err := r.CRDs.Transfer(ctx, crd, owner, pkg.Name); err != nil {
+			return ctrl.Result{}, true, err
+		}
+		if pkg.Annotations[AnnotationAdopt] != "true" {
+			// The CRD object still belongs to the other package's release.
+			patch := client.MergeFrom(pkg.DeepCopy())
+			if pkg.Annotations == nil {
+				pkg.Annotations = map[string]string{}
+			}
+			pkg.Annotations[AnnotationAdopt] = "true"
+			if err := r.Patch(ctx, pkg, patch); err != nil {
+				return ctrl.Result{}, true, err
+			}
+		}
+	}
+}
+
 // finalize removes releases, newest components first, and handles CRDs.
 func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1beta1.Package) error {
 	forgetPackage(pkg.Name)
@@ -623,21 +663,32 @@ func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1beta1.Package) 
 	if err != nil {
 		return err
 	}
-	if cur := lastOf(revs); cur != nil {
-		for i := len(cur.Spec.Components) - 1; i >= 0; i-- {
-			c := cur.Spec.Components[i]
+	deleteCRDs := pkg.Spec.CRDPolicy == v1beta1.CRDPolicyDelete
+	if r.CRDs != nil && !deleteCRDs {
+		// Kept CRDs must survive the releases that carry them going.
+		if err := r.CRDs.Retain(ctx, pkg.Name, nil); err != nil {
+			return err
+		}
+	}
+	// Every release the package ever made, newest revision and newest
+	// component first: a component that moved, or one left by a failed
+	// revision, goes too.
+	seen := map[string]bool{}
+	for ri := len(revs) - 1; ri >= 0; ri-- {
+		comps := revs[ri].Spec.Components
+		for i := len(comps) - 1; i >= 0; i-- {
+			c := comps[i]
+			if seen[c.Namespace+"/"+c.ReleaseName] {
+				continue
+			}
+			seen[c.Namespace+"/"+c.ReleaseName] = true
 			if err := r.Backend.Uninstall(ctx, backend.Component{Package: pkg.Name, Name: c.Name, ReleaseName: c.ReleaseName, Namespace: c.Namespace}); err != nil {
 				return err
 			}
 		}
 	}
 	if r.CRDs != nil {
-		src := &v1beta1.PackageSource{}
-		var crds []string
-		if err := r.Get(ctx, types.NamespacedName{Name: pkg.Name}, src); err == nil {
-			crds = src.Spec.CRDs
-		}
-		if err := r.CRDs.Release(ctx, pkg.Name, crds, pkg.Spec.CRDPolicy == v1beta1.CRDPolicyDelete); err != nil {
+		if err := r.CRDs.Release(ctx, pkg.Name, deleteCRDs); err != nil {
 			return err
 		}
 	}
