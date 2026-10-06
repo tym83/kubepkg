@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="933" height="260" viewBox="0 0 933 260" role="img" aria-label="kubepkg — install">
+<rect width="933" height="260" rx="8" fill="#1e1f29"/>
+<path d="M0 8a8 8 0 0 1 8-8h917a8 8 0 0 1 8 8v22h-933z" fill="#2a2c3a"/>
+<circle cx="18" cy="15" r="6" fill="#ff5f57"/><circle cx="38" cy="15" r="6" fill="#febc2e"/><circle cx="58" cy="15" r="6" fill="#28c840"/>
+<text x="466.5" y="19" fill="#8b8fa3" font-family="-apple-system, Segoe UI, sans-serif" font-size="12" text-anchor="middle">kubepkg — install</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" xml:space="preserve">
+<text x="16" y="59"><tspan fill="#7ee787">$</tspan><tspan fill="#ffffff" font-weight="bold"> kubepkg install cert-manager kube-state-metrics --yes</tspan></text>
+<text x="16" y="77" fill="#d6d8e0">ACTION   PACKAGE             FROM  TO              REPOSITORY  WHY</text>
+<text x="16" y="95" fill="#d6d8e0">install  cert-manager        -     1.21.2 build 2  main        requested</text>
+<text x="16" y="113" fill="#d6d8e0">install  kube-state-metrics  -     2.20.0 build 2  main        requested</text>
+<text x="16" y="131" fill="#d6d8e0">  cert-manager: owns CRDs: certificates.cert-manager.io, certificaterequests.cert-manager.io, issuers.cert-ma…</text>
+<text x="16" y="149" fill="#d6d8e0">  cert-manager: not rollback-safe: a failed upgrade is fixed forward, not rolled back</text>
+<text x="16" y="167" fill="#d6d8e0">2 packages requested; follow them with "list"</text>
+<text x="16" y="185"><tspan fill="#7ee787">$</tspan><tspan fill="#ffffff" font-weight="bold"> kubepkg list</tspan></text>
+<text x="16" y="203" fill="#d6d8e0">NAME                VERSION  REVISION  READY  REASON</text>
+<text x="16" y="221" fill="#d6d8e0">cert-manager        1.21.2   1         True   ReconciliationSucceeded</text>
+<text x="16" y="239" fill="#d6d8e0">kube-state-metrics  2.20.0   1         True   ReconciliationSucceeded</text>
+</g>
+</svg>

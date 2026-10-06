@@ -1,0 +1,7 @@
+$ kubepkg rollback cert-manager --to 1
+package cert-manager: rollback to revision 1 requested
+$ kubepkg history cert-manager
+REVISION  VERSION  PHASE       CREATED              NOTE
+1         1.21.2   Superseded  2026-10-06 02:36:08  
+2         1.21.2   Superseded  2026-10-06 02:37:57  
+3         1.21.2   Applied     2026-10-06 02:38:11  restored from 1

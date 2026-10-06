@@ -65,8 +65,12 @@ type Index struct {
 	// Generated is when the index was built. Clusters refuse an index
 	// older than one they accepted, so an old signed index cannot be
 	// replayed to roll them back to versions since withdrawn.
-	Generated *metav1.Time       `json:"generated,omitempty"`
-	Packages  map[string]Package `json:"packages"`
+	Generated *metav1.Time `json:"generated,omitempty"`
+	// Expires bounds how long clients accept the index: a mirror that
+	// keeps serving an old one is refused once it expires. Repositories
+	// with a root must set it.
+	Expires  *metav1.Time       `json:"expires,omitempty"`
+	Packages map[string]Package `json:"packages"`
 }
 
 // Package is every published version of one package.

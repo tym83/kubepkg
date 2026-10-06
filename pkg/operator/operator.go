@@ -44,6 +44,7 @@ import (
 	"github.com/tym83/kubepkg/pkg/backend/argo"
 	"github.com/tym83/kubepkg/pkg/backend/flux"
 	"github.com/tym83/kubepkg/pkg/backend/helm"
+	"github.com/tym83/kubepkg/pkg/backend/werf"
 	"github.com/tym83/kubepkg/pkg/controller"
 	"github.com/tym83/kubepkg/pkg/repo"
 	"github.com/tym83/kubepkg/pkg/source"
@@ -76,6 +77,9 @@ type Options struct {
 	IndexFetchers repo.Fetchers
 	Policy        repo.Policy
 
+	// NelmBinary is the nelm executable (werf backend).
+	NelmBinary string
+
 	// ArgoNamespace and ArgoProject place Applications (argo backend).
 	ArgoNamespace string
 	ArgoProject   string
@@ -97,11 +101,12 @@ func DefaultOptions() *Options {
 	return &Options{
 		Profile:       controller.DefaultProfile(),
 		Backend:       "helm",
-		Backends:      map[string]BackendFactory{"helm": HelmBackend, "flux": FluxBackend, "argo": ArgoBackend},
+		Backends:      map[string]BackendFactory{"helm": HelmBackend, "flux": FluxBackend, "argo": ArgoBackend, "werf": WerfBackend},
 		AddToScheme:   []func(*runtime.Scheme) error{helmv2.AddToScheme},
 		IndexFetchers: repo.DefaultFetchers(),
 		Policy:        repo.AllowAll{},
 		CacheDir:      filepath.Join(os.TempDir(), "kubepkg"),
+		NelmBinary:    "nelm",
 		MetricsAddr:   ":8080",
 		ProbeAddr:     ":8081",
 	}
@@ -121,6 +126,7 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.Backend, "backend", o.Backend, "backend: "+strings.Join(names, ", "))
 	fs.StringVar(&o.ArgoNamespace, "argo-namespace", o.ArgoNamespace, "namespace Argo CD watches for Applications (argo backend, default argocd)")
 	fs.StringVar(&o.ArgoProject, "argo-project", o.ArgoProject, "Argo CD project of the Applications (argo backend, default default)")
+	fs.StringVar(&o.NelmBinary, "nelm-binary", o.NelmBinary, "nelm executable (werf backend)")
 	fs.StringVar(&o.CacheDir, "cache-dir", o.CacheDir, "where package trees and charts are kept (helm backend)")
 	fs.StringVar(&o.RegistryConfig, "registry-config", o.RegistryConfig, "Docker config file with registry credentials")
 	fs.BoolVar(&o.PlainHTTP, "plain-http", o.PlainHTTP, "talk to OCI registries without TLS (local test registries only)")
@@ -149,6 +155,24 @@ func HelmBackend(env Env) (backend.Backend, controller.Preparer, error) {
 // and a HelmRelease per component.
 func FluxBackend(env Env) (backend.Backend, controller.Preparer, error) {
 	return &flux.Backend{Client: env.Client, Insecure: env.Options.PlainHTTP}, controller.ChartPreparer{}, nil
+}
+
+// WerfBackend installs through Nelm, werf's deployment engine, with charts
+// prepared as for the helm backend.
+func WerfBackend(env Env) (backend.Backend, controller.Preparer, error) {
+	o := env.Options
+	secrets, err := kubernetes.NewForConfig(env.Config)
+	if err != nil {
+		return nil, nil, err
+	}
+	b, err := werf.NewBackend(o.NelmBinary, filepath.Join(o.CacheDir, "nelm"), env.Config, secrets)
+	if err != nil {
+		return nil, nil, err
+	}
+	return b, &controller.OCIPreparer{
+		Fetcher: &source.Fetcher{CacheDir: o.CacheDir, PlainHTTP: o.PlainHTTP, CredentialsFile: o.RegistryConfig},
+		WorkDir: filepath.Join(o.CacheDir, "composed"),
+	}, nil
 }
 
 // ArgoBackend installs through Argo CD: an Application per component.
@@ -209,6 +233,15 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 		return err
 	}
 	if err := (&controller.RepositoryReconciler{Client: mgr.GetClient(), Repositories: repos}).SetupWithManager(mgr); err != nil {
+		return err
+	}
+	// Hub: Clusters and PackageSets. Kubeconfig Secrets are read straight
+	// from the API server, so the operator does not cache every Secret.
+	members := &controller.KubeconfigClients{Hub: mgr.GetAPIReader(), Group: o.Profile.Group}
+	if err := (&controller.ClusterReconciler{Client: mgr.GetClient(), Members: members}).SetupWithManager(mgr); err != nil {
+		return err
+	}
+	if err := (&controller.PackageSetReconciler{Client: mgr.GetClient(), Members: members}).SetupWithManager(mgr); err != nil {
 		return err
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

@@ -39,9 +39,9 @@ const UnversionedVersion = "0.0.0-unversioned"
 // +kubebuilder:resource:scope=Cluster,shortName={pks}
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Package version"
-// +kubebuilder:printcolumn:name="Variants",type="string",JSONPath=".status.variants",description="Package variants (comma-separated)"
-// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status",description="Ready status"
-// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].message",description="Ready message"
+// +kubebuilder:printcolumn:name="Build",type="integer",JSONPath=".spec.build",description="Packaging build of that version"
+// +kubebuilder:printcolumn:name="Repository",type="string",JSONPath=".metadata.labels.kubepkg\\.dev/repository",description="Repository the version was taken from; empty when written by hand"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // PackageSource is one package at one version: where its charts come from,
 // what it provides and requires, and how its components are installed.
@@ -258,6 +258,47 @@ type ComponentInstall struct {
 	// resource is actually healthy.
 	// +optional
 	HealthCheckExprs []kustomize.CustomHealthCheck `json:"healthCheckExprs,omitempty"`
+
+	// Phase PreUpgrade makes the component a hook: it runs only when the
+	// package moves to another version, before every other component,
+	// with values kubepkg.fromVersion and kubepkg.toVersion, typically a
+	// Job that migrates data. A hook that fails stops the upgrade before
+	// anything else changes; it is uninstalled once the upgrade succeeds,
+	// so the next upgrade runs it afresh.
+	// +optional
+	// +kubebuilder:validation:Enum=PreUpgrade
+	Phase string `json:"phase,omitempty"`
+
+	// ReadyWhen lists object conditions that must hold before the
+	// component counts as ready, for resources whose own readiness Helm
+	// cannot see, such as an operator's custom resource reporting
+	// Available. Every backend honours it; not meeting it within the
+	// upgrade timeout fails the revision.
+	// +optional
+	ReadyWhen []ReadyCondition `json:"readyWhen,omitempty"`
+}
+
+// PhasePreUpgrade marks a component as a pre-upgrade hook.
+const PhasePreUpgrade = "PreUpgrade"
+
+// ReadyCondition is a condition an object must report.
+type ReadyCondition struct {
+	// +required
+	APIVersion string `json:"apiVersion"`
+	// +required
+	Kind string `json:"kind"`
+	// +required
+	Name string `json:"name"`
+	// Namespace defaults to the component's install namespace and is
+	// ignored for cluster-scoped kinds.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+	// Condition is the type in status.conditions, e.g. Available.
+	// +required
+	Condition string `json:"condition"`
+	// Status is the wanted status of the condition. Default "True".
+	// +optional
+	Status string `json:"status,omitempty"`
 }
 
 // ChartRef points at one version of a published Helm chart.

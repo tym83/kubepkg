@@ -1,0 +1,3 @@
+$ kubepkg cluster list
+NAME  KUBERNETES  READY  LABELS    STATUS
+edge  v1.35.6     True   env=edge  kubepkg is installed

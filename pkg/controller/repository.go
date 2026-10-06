@@ -70,6 +70,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err := r.Get(ctx, req.NamespacedName, rp); err != nil {
 		if apierrors.IsNotFound(err) {
 			r.Repositories.Store.Delete(req.Name)
+			forgetRepository(req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -82,6 +83,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	idx, digest, reason, err := r.load(ctx, rp)
 	if err != nil {
 		r.Repositories.Store.Failed(rp.Name)
+		recordRepository(rp, false)
 		meta.SetStatusCondition(&rp.Status.Conditions, metav1.Condition{
 			Type: "Ready", Status: metav1.ConditionFalse, Reason: reason, Message: err.Error(), ObservedGeneration: rp.Generation,
 		})
@@ -96,6 +98,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	rp.Status.IndexDigest = digest
 	rp.Status.LastFetched = &now
 	rp.Status.IndexGenerated = idx.Generated
+	recordRepository(rp, true)
 	meta.SetStatusCondition(&rp.Status.Conditions, metav1.Condition{
 		Type: "Ready", Status: metav1.ConditionTrue, Reason: "IndexLoaded",
 		Message: fmt.Sprintf("%d packages", len(idx.Packages)), ObservedGeneration: rp.Generation,
@@ -107,20 +110,20 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 }
 
 func (r *RepositoryReconciler) load(ctx context.Context, rp *v1alpha1.Repository) (*repo.Index, string, string, error) {
-	idx, raw, err := repo.LoadIndex(ctx, r.Repositories.Fetchers, rp.Spec.URL, rp.Spec.PublicKeys)
+	idx, raw, trust, err := repo.LoadRepository(ctx, r.Repositories.Fetchers, rp.Spec, rp.Status, time.Now())
 	switch {
-	case errors.Is(err, repo.ErrBadSignature):
+	case errors.Is(err, repo.ErrBadSignature), errors.Is(err, repo.ErrExpired):
 		return nil, "", "IndexRefused", err
 	case errors.Is(err, repo.ErrInvalidIndex):
 		return nil, "", "InvalidIndex", err
 	case err != nil:
 		return nil, "", "FetchFailed", err
 	}
-	if seen := rp.Status.IndexGenerated; seen != nil && (idx.Generated == nil || idx.Generated.Before(seen)) {
-		return nil, "", "IndexRefused", fmt.Errorf("index is older than the one accepted before (%s): refusing a rollback", seen.UTC().Format(time.RFC3339))
-	}
 	if err := r.Repositories.Policy.AdmitIndex(ctx, rp.Name, raw, idx); err != nil {
 		return nil, "", "IndexRefused", err
+	}
+	if rp.Spec.Trust != nil {
+		rp.Status.RootVersion, rp.Status.RootDigest = int32(trust.RootVersion), trust.RootDigest
 	}
 	sum := sha256.Sum256(raw)
 	return idx, "sha256:" + hex.EncodeToString(sum[:]), "", nil

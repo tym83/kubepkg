@@ -132,6 +132,9 @@ type desiredState struct {
 	variant      string
 	rollbackSafe bool
 	components   []desiredComponent
+	// hooks run before components when the version changes; they are not
+	// part of a revision's snapshot, since they are gone once it applied.
+	hooks []desiredComponent
 	// digest identifies the desired state: Package spec, the retry
 	// annotation and the PackageSource spec. Chart content is not part of
 	// it; a tag that moves under the same spec is picked up by the
@@ -140,8 +143,9 @@ type desiredState struct {
 }
 
 type desiredComponent struct {
-	snapshot v1alpha1.ComponentSnapshot
-	backend  backend.Component
+	snapshot  v1alpha1.ComponentSnapshot
+	backend   backend.Component
+	readyWhen []v1alpha1.ReadyCondition
 }
 
 func digestOf(v any) (string, error) {
@@ -225,6 +229,13 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 		}
 		byName[c.Name] = c
 	}
+	for _, c := range comps {
+		for _, dep := range c.Install.DependsOn {
+			if h, ok := byName[dep]; ok && h.Install.Phase == v1alpha1.PhasePreUpgrade && c.Install.Phase != v1alpha1.PhasePreUpgrade {
+				return nil, fmt.Errorf("component %s depends on %s, a pre-upgrade hook, which runs only on upgrades", c.Name, dep)
+			}
+		}
+	}
 	order, err := topoOrder(comps)
 	if err != nil {
 		return nil, err
@@ -282,7 +293,7 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 		if err != nil {
 			return nil, err
 		}
-		d.components = append(d.components, desiredComponent{
+		dc := desiredComponent{
 			snapshot: v1alpha1.ComponentSnapshot{
 				Name:         c.Name,
 				ReleaseName:  bc.ReleaseName,
@@ -291,8 +302,14 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 				ChartDigest:  chartDigest,
 				ValuesDigest: valuesDigest,
 			},
-			backend: bc,
-		})
+			backend:   bc,
+			readyWhen: c.Install.ReadyWhen,
+		}
+		if c.Install.Phase == v1alpha1.PhasePreUpgrade {
+			d.hooks = append(d.hooks, dc)
+		} else {
+			d.components = append(d.components, dc)
+		}
 	}
 	return d, nil
 }

@@ -1,0 +1,17 @@
+$ kubectl get packages
+NAME                 VARIANT   VERSION   REVISION   READY   STATUS
+cert-manager                   1.21.2    3          True    rolled back to revision 1 on request; change the Package or set kubepkg.dev/retry to follow it again
+kube-state-metrics             2.20.0    1          True    reconciliation succeeded, revision 1, 1 component(s)
+$ kubectl get packagerevisions
+NAME                   PACKAGE              REVISION   VERSION   PHASE
+cert-manager-1         cert-manager         1          1.21.2    Superseded
+cert-manager-2         cert-manager         2          1.21.2    Superseded
+cert-manager-3         cert-manager         3          1.21.2    Applied
+kube-state-metrics-1   kube-state-metrics   1          2.20.0    Applied
+$ kubectl get packagesources
+NAME                 VERSION   BUILD   REPOSITORY   AGE
+cert-manager         1.21.2    2       main         2m9s
+kube-state-metrics   2.20.0    2       main         40s
+$ kubectl get repositories
+NAME   URL                                                  PRIORITY   PACKAGES   READY   STATUS
+main   https://tym83.github.io/kubepkg-recipes/index.yaml              6          True    6 packages

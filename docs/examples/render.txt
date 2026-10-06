@@ -1,0 +1,41 @@
+$ kubepkg render virtualization --format argo --repo https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub | head -40
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+  labels:
+    kubepkg.dev/package: cdi
+  name: cdi-operator
+  namespace: argocd
+spec:
+  destination:
+    namespace: cdi
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: cdi-operator
+    helm:
+      releaseName: operator
+    repoURL: ghcr.io/tym83/kubepkg-packages/cdi
+    targetRevision: 1.66.1-2
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+    syncOptions:
+    - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+  labels:
+    kubepkg.dev/package: cdi

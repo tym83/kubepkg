@@ -78,6 +78,30 @@ spec:
                 items:
                   type: string
                 type: array
+              trust:
+                description: |-
+                  Trust verifies the repository the way TUF does: the root keys pinned
+                  here sign root/1.yaml, each later root version is signed by enough
+                  root keys of the one before and of itself, the current root names
+                  the keys and threshold the index needs, and both expire. Use it
+                  instead of publicKeys for threshold signing and key rotation.
+                properties:
+                  rootKeys:
+                    description: RootKeys are PEM encoded ed25519 keys of version
+                      1 of the root.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                  rootThreshold:
+                    description: RootThreshold is how many of them must have signed
+                      it. Default 1.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                required:
+                - rootKeys
+                type: object
               url:
                 description: |-
                   URL of the index, e.g. https://packages.example.org/index.yaml. The
@@ -160,6 +184,14 @@ spec:
                 type: string
               packages:
                 description: Packages is the number of packages in the index.
+                format: int32
+                type: integer
+              rootDigest:
+                type: string
+              rootVersion:
+                description: |-
+                  RootVersion and RootDigest are the root accepted last; an older root
+                  or another root under the same version is refused.
                 format: int32
                 type: integer
             type: object

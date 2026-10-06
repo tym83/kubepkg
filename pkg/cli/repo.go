@@ -24,8 +24,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/tym83/kubepkg/pkg/repo"
 	"github.com/tym83/kubepkg/pkg/source"
@@ -42,9 +44,11 @@ func repoCmd(cl *cluster) *cobra.Command {
 
 func repoIndexCmd() *cobra.Command {
 	var (
-		out, merge, signKey, signKeyEnv string
-		opts                            repo.BuildOptions
-		plainHTTP                       bool
+		out, merge, signKeyEnv string
+		signKeys               []string
+		expires                time.Duration
+		opts                   repo.BuildOptions
+		plainHTTP              bool
 	)
 	cmd := &cobra.Command{
 		Use:   "index <dir>",
@@ -75,16 +79,29 @@ index.yaml; packages and charts stay in their registries.`,
 			if err != nil {
 				return err
 			}
-			key, err := signingKey(signKey, signKeyEnv)
-			if err != nil {
+			var keys [][]byte
+			for _, f := range signKeys {
+				k, err := os.ReadFile(f)
+				if err != nil {
+					return err
+				}
+				keys = append(keys, k)
+			}
+			if k, err := signingKey("", signKeyEnv); err != nil {
 				return err
+			} else if k != nil {
+				keys = append(keys, k)
+			}
+			if expires > 0 {
+				e := metav1.NewTime(idx.Generated.Add(expires))
+				idx.Expires = &e
 			}
 			var raw bytes.Buffer
 			if err := idx.Write(&raw); err != nil {
 				return err
 			}
 			if out == "-" {
-				if key != nil {
+				if len(keys) > 0 {
 					return fmt.Errorf("a signed index needs a file to write the signature next to")
 				}
 				_, err := cmd.OutOrStdout().Write(raw.Bytes())
@@ -96,10 +113,12 @@ index.yaml; packages and charts stay in their registries.`,
 			if err := os.WriteFile(out, raw.Bytes(), 0o644); err != nil {
 				return err
 			}
-			if key != nil {
-				sig, err := repo.Sign(raw.Bytes(), key)
-				if err != nil {
-					return err
+			if len(keys) > 0 {
+				var sig []byte
+				for _, k := range keys {
+					if sig, err = repo.SignIndex(raw.Bytes(), sig, k); err != nil {
+						return err
+					}
 				}
 				if err := os.WriteFile(out+repo.SignatureSuffix, sig, 0o644); err != nil {
 					return err
@@ -118,8 +137,9 @@ index.yaml; packages and charts stay in their registries.`,
 	cmd.Flags().BoolVar(&opts.Verify, "verify", false, "also download pinned charts and check their digests")
 	cmd.Flags().StringVar(&merge, "merge", "", "published index (file or URL) whose versions are kept; published versions must not change")
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "talk to OCI registries without TLS (local registries only)")
-	cmd.Flags().StringVar(&signKey, "sign-key", "", "sign the index with this ed25519 private key file; the signature goes next to it as .sig")
-	cmd.Flags().StringVar(&signKeyEnv, "sign-key-env", "", "sign with the PEM private key in this environment variable, for CI secrets")
+	cmd.Flags().StringArrayVar(&signKeys, "sign-key", nil, "sign the index with this ed25519 private key file (repeatable); signatures go next to it as .sig")
+	cmd.Flags().StringVar(&signKeyEnv, "sign-key-env", "", "also sign with the PEM private key in this environment variable, for CI secrets")
+	cmd.Flags().DurationVar(&expires, "expires", 0, "how long clients accept the index; required by repositories with a root (e.g. 720h)")
 	return cmd
 }
 

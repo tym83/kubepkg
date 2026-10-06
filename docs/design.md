@@ -1,12 +1,12 @@
-# Design: kubepkg v0.1
+# Design
 
-This document specifies the v0.1 API and the behaviour of the operator and the CLI. The reasons behind the choices are in [rationale.md](rationale.md).
+This document specifies the `v1alpha1` API and the behaviour of the operator and the CLI. The reasons behind the choices are in [rationale.md](rationale.md).
 
-## Scope of v0.1
+## Scope
 
-In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, a plan before changes, three backends (Helm, Flux and Argo CD), and settings that let a platform embed kubepkg without changing its code.
+In scope: versioned packages, requirements on packages and capabilities with version constraints, conflicts, CRD ownership, declared permissions, package revisions with whole-package rollback where it is declared safe, readiness conditions and pre-upgrade hooks, a plan before changes, four backends (Helm, werf, Flux and Argo CD), package repositories with a root of trust, a hub for several clusters, metrics and alerts, and settings that let a platform embed kubepkg without changing its code.
 
-Out of scope for v0.1, on the roadmap: TUF repository metadata (role delegation, threshold signatures), pre-upgrade hooks, multi-cluster targeting.
+Out of scope, on the roadmap: delegated roles for parts of a repository (TUF targets delegation), staged rollouts across clusters.
 
 ## Resources
 
@@ -182,10 +182,15 @@ type Backend interface {
 }
 ```
 
+A component can declare `readyWhen`: object conditions that must hold before it counts as ready, for resources whose readiness Helm cannot see, such as an operator's custom resource reporting `Available`. A release that installed but never meets them within the upgrade timeout fails the revision like any other failure.
+
+A component with `install.phase: PreUpgrade` is a hook, typically a chart with a Job that migrates data. It runs only when a revision moves the package to another version, before every other component, with the values `kubepkg.fromVersion` and `kubepkg.toVersion`. A hook that fails stops the upgrade before anything else changes; once the upgrade succeeds its release is removed, so the next upgrade runs it afresh. Hooks are not part of a revision's snapshot, and no other component may depend on one. `kubepkg plan` lists the hooks an upgrade runs.
+
 Every backend gets a package's components one at a time in dependency order: the operator applies the next one only once the one before it is ready, so ordering never depends on the delivery tool supporting it. Synchronous backends report readiness from `Apply`; asynchronous ones are re-checked until they settle.
 
 - **helm** installs charts with the Helm SDK inside the operator. Sources: published charts (HTTP repositories and OCI registries) and `OCIArtifact` package trees. Rollback uses Helm release history. No other controllers are needed.
 - **flux** hands each component to Flux: it writes the chart's source, an `OCIRepository` selecting the Helm chart layer for charts in a registry or a `HelmRepository` otherwise, and a `HelmRelease`, and deletes both on uninstall. It needs only Flux's source and helm controllers. Sources: published charts; package trees cannot be handed to Flux. Flux keeps no earlier chart artifacts, so this backend cannot roll back: packages applied through it are recovered by a forward fix, and `UpgradeFailed` is reported instead of `UpgradeRolledBack`. Flux reads the platform values Secret only from the release namespace.
+- **werf** installs each component through Nelm, the deployment engine of werf, which ships in the operator image (`--nelm-binary`). Charts are prepared as for the helm backend, values go in as a file, and Nelm keeps Helm-compatible release history, so this backend rolls back like the helm one. It needs cluster-admin for the same reason.
 - **argo** hands each component to Argo CD as an automatically synced `Application` in `--argo-namespace` (default `argocd`) and `--argo-project`. Argo CD cannot read values from Secrets, so the operator passes platform and package values inline. A component is ready when the wanted chart version is synced and healthy; deleting it lets Argo CD remove what it deployed. It cannot roll back, like flux.
 
 The backend is chosen per operator installation (`--backend`).
@@ -298,7 +303,9 @@ Because every chart is pinned, the spec digest identifies exactly what a version
 
 ### Signing and trust
 
-A repository signs its index, and clusters trust repositories by key:
+There are two ways to trust a repository.
+
+**Plain keys.** The repository signs its index with an ed25519 key, and clusters trust it by public key:
 
 ```bash
 kubepkg repo keygen release                        # release.key (private), release.pub
@@ -306,9 +313,21 @@ kubepkg repo index dist --sign-key release.key     # index.yaml and index.yaml.s
 kubepkg repo add main https://packages.example.org/index.yaml --public-key release.pub
 ```
 
-The signature is ed25519 over the index exactly as published, served next to it with `.sig`. The index pins every chart by digest, and every chart is verified against its digest when fetched, so one signature covers everything the repository installs. A `Repository` with `publicKeys` accepts an index only when one of the keys signed it; several keys let a repository rotate: trust the new key, then sign with it. CI signs with `--sign-key-env`, reading the key from a secret.
+**A root of trust**, after TUF, for threshold signing and key rotation. The repository publishes `root.yaml` next to its index, and every version of it as `root/<version>.yaml`. The root names the keys that may sign the root itself and those that may sign the index, with a threshold for each, and expires:
 
-Every index carries the time it was generated, and a cluster refuses an index older than one it already accepted, so an old index that is validly signed cannot be replayed to bring back versions since withdrawn. A refused index leaves the one accepted before in use. The CLI applies the same checks to the cluster's repositories.
+```bash
+kubepkg trust root new --root-key a.pub --root-key b.pub --root-key c.pub --root-threshold 2 \
+  --index-key ci.pub --index-threshold 1 --expires 8760h -o root.yaml
+kubepkg trust sign root.yaml --key a.key           # each signer on their own machine
+kubepkg trust sign root.yaml --key c.key
+kubepkg repo index dist --expires 720h --sign-key ci.key
+kubepkg repo add main https://packages.example.org/index.yaml \
+  --root-key a.pub --root-key b.pub --root-key c.pub --root-threshold 2
+```
+
+A cluster pins the keys of root version 1 and their threshold. It follows the chain to the current root, accepting each version only when it is signed by enough root keys of the version before and of itself, so keys rotate without clients changing anything: `kubepkg trust root next root.yaml --root-key ...` makes the next version, and both the old and the new root keys sign it. The index must carry enough signatures by the keys the current root names for it (`kubepkg trust sign index.yaml --key ...` adds one), and neither the root nor the index may have expired: a mirror that keeps serving an old index is refused once it expires. A cluster records the root it accepted, refusing an older root and another root under the same version, the fork someone holding stolen old keys could make.
+
+In both modes the index pins every chart by digest, and every chart is verified against its digest when fetched, so the signatures cover everything the repository installs. Every index carries the time it was generated, and a cluster refuses an index older than one it already accepted, so an old index that is validly signed cannot be replayed. A refused index leaves the one accepted before in use. The CLI applies the same checks to the cluster's repositories.
 
 A distribution adds checks of its own, such as signatures from its own key infrastructure or allowed registries, through the admission policy.
 
@@ -341,6 +360,46 @@ The operator keeps every index loaded. A `Package` with no hand-written `Package
 
 A distribution adds index transports by URL scheme (`http` and `https` are built in) and a policy that admits indexes and versions — signature checks, allowed registries — through `operator.Options`.
 
+## Several clusters
+
+A hub installs packages into member clusters, each of which runs kubepkg itself and keeps its own revisions and rollbacks. The hub knows its members as `Cluster` resources, which point at a kubeconfig in a Secret and carry labels, and says what goes where with `PackageSet`s:
+
+```bash
+kubepkg cluster add edge-1 --kubeconfig edge-1.kubeconfig --label env=prod --label region=eu
+```
+
+```yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: PackageSet
+metadata:
+  name: base
+spec:
+  clusterSelector: {matchLabels: {env: prod}}
+  repositories:
+    - name: main
+      spec: {url: https://packages.example.org/index.yaml, publicKeys: ["..."]}
+  packages:
+    - name: cert-manager
+      spec: {version: "~1.21"}
+    - name: virtualization
+```
+
+The hub writes the repositories and packages to every selected cluster, labelled `kubepkg.dev/package-set`, and never touches objects it did not create: a Package of the same name made by hand is reported as a conflict and left alone. Dropping a package from the set removes it from the clusters; a cluster that stops matching the selector loses what the set wrote there; deleting the set removes everything it wrote, and waits for unreachable clusters rather than leave packages behind. The set's status counts ready packages per cluster (`kubepkg set list`), and each Cluster reports whether the hub reaches it and whether it runs kubepkg (`kubepkg cluster list`).
+
+## Observability
+
+The operator exports Prometheus metrics next to controller-runtime's own:
+
+| Metric | Meaning |
+|---|---|
+| `kubepkg_package_ready{package}` | 1 when the package is ready |
+| `kubepkg_package_info{package,version,revision}` | the version and revision a package runs |
+| `kubepkg_revisions_total{package,outcome}` | revisions by outcome: `applied`, `failed`, `rolled_back` |
+| `kubepkg_repository_ready{repository}` | 1 when the repository's index is loaded and accepted |
+| `kubepkg_repository_index_generated_timestamp_seconds{repository}` | when the accepted index was built |
+
+The chart adds a metrics Service and, when enabled, a ServiceMonitor, a PrometheusRule with alerts (a package not ready for 15 minutes, a failed or rolled back upgrade, a repository that cannot be loaded, an index unchanged for longer than `indexMaxAge`, a controller that keeps failing to reconcile) and a Grafana dashboard.
+
 ## Other delivery tools without the operator
 
 Built packages are ordinary Helm charts in OCI registries, so any tool that installs Helm charts installs them. `kubepkg render <package>...` does the part those tools lack: it resolves the packages and their requirements, as `install` would for an empty cluster, and writes them in kubepkg's order for the tool to apply from Git.
@@ -362,7 +421,7 @@ Configuration — operator flags, all off by default:
 | `--api-group` | serves the types under the platform's own group; `make crds-for-group GROUP=... OUT=...` writes matching CRDs. The CLI takes the same flag |
 | `--values-secret namespace/name` | layers the Secret's `values.yaml` under every component's values, for cluster-wide settings such as a domain or an issuer; a PackageSource opts out with the `kubepkg.dev/skip-platform-values` annotation. A missing Secret fails the release instead of installing it unconfigured |
 | `--namespace-label key=value` | labels every namespace the packages create (repeatable) |
-| `--backend helm\|flux\|argo` | how components are installed; `--argo-namespace` and `--argo-project` place Argo CD Applications |
+| `--backend helm\|werf\|flux\|argo` | how components are installed; `--argo-namespace` and `--argo-project` place Argo CD Applications, `--nelm-binary` names Nelm for werf |
 
 Releases are labelled `kubepkg.dev/package`; privileged components get `<group>/privileged`.
 
@@ -401,6 +460,8 @@ Building and publishing:
 | `build <recipe>` | build a package from upstream sources and publish it |
 | `repo index <dir> [--sign-key <file>]` | build a repository index from the PackageSources under a directory, signed |
 | `repo keygen <prefix>` | make an ed25519 key pair for signing |
+| `trust root new`, `trust root next`, `trust sign` | make root versions and add signatures to roots and indexes |
+| `cluster add`, `cluster list`, `set list` | register member clusters with a hub and follow PackageSets |
 | `push <dir> <oci-ref>` | publish a package tree as is |
 | `render <pkg>...` | write packages for Flux, Argo CD or helmfile, in kubepkg's order |
 

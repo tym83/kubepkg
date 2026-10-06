@@ -25,6 +25,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"sigs.k8s.io/yaml"
 )
 
 // SignatureSuffix is appended to an index URL to find its signature.
@@ -95,6 +97,23 @@ func ParsePublicKeys(pems []string) ([]ed25519.PublicKey, error) {
 // Verify checks that one of the keys signed the index bytes. Several keys
 // let a repository rotate: trust the new key, then sign with it.
 func Verify(index, signature []byte, keys []ed25519.PublicKey) error {
+	// A signature file in the list form holds signatures by several keys;
+	// any trusted one will do here.
+	var list Signatures
+	if yaml.Unmarshal(signature, &list) == nil && len(list.Signatures) > 0 {
+		for _, s := range list.Signatures {
+			raw, err := base64.StdEncoding.DecodeString(s.Sig)
+			if err != nil {
+				continue
+			}
+			for _, k := range keys {
+				if ed25519.Verify(k, index, raw) {
+					return nil
+				}
+			}
+		}
+		return ErrBadSignature
+	}
 	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(signature)))
 	if err != nil {
 		return fmt.Errorf("%w: signature is not base64", ErrBadSignature)

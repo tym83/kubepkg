@@ -67,7 +67,8 @@ tree v1 registry.k8s.io/pause:3.10
 tree v2-broken registry.k8s.io/pause:does-not-exist-e2e
 tree v3 registry.k8s.io/pause:3.9
 
-start_operator --values-secret kubepkg-system/platform-values --namespace-label e2e.kubepkg.dev/managed=true
+# BACKEND picks the installer: helm (default) or werf (needs nelm on PATH).
+start_operator --backend "${BACKEND:-helm}" --values-secret kubepkg-system/platform-values --namespace-label e2e.kubepkg.dev/managed=true
 
 step "1. install demo 1.0.0"
 demo_source 1.0.0 v1
@@ -147,7 +148,8 @@ wait_reason blocked RequirementsNotMet
 
 step "6. roll back by request to revision 1"
 "${ROOT}/bin/kubepkg" --context "${KCTX}" rollback demo --to 1 >/dev/null
-wait_reason demo UpgradeRolledBack
+# A rollback someone asked for is ready once it runs.
+wait_reason demo RolledBack
 [[ "$(image_of e2e-demo web)" == registry.k8s.io/pause:3.10 ]] || fail "manual rollback did not restore 1.0.0"
 echo "  revisions: $(revisions demo)"
 

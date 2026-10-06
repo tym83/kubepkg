@@ -4,10 +4,11 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# How components are installed: helm (in-process, can roll back), flux or argo.
+# How components are installed: helm (in-process, can roll back), werf
+# (through Nelm, werf's deployment engine, can roll back), flux or argo.
 backend: helm
 
-# The helm backend installs whatever the packages' charts contain, CRDs and
+# The helm and werf backends install whatever the packages' charts contain, CRDs and
 # cluster roles included; Kubernetes only lets it grant permissions it holds,
 # so it needs cluster-admin. The flux and argo backends hand charts to Flux or
 # Argo CD and get by with the operator's own role; set this to false for them.
@@ -39,9 +40,34 @@ plainHTTP: false
 #         -----BEGIN PUBLIC KEY-----
 #         ...
 #         -----END PUBLIC KEY-----
+#   or, for a repository with a root of trust (threshold signing, rotation):
+#     trust:
+#       rootThreshold: 2
+#       rootKeys: [...]
 repositories: []
 
 replicas: 1
+
+metrics:
+  # A Service in front of the operator's metrics endpoint.
+  service: true
+  # A Prometheus Operator ServiceMonitor scraping it.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+  # Alerts: packages not ready, failed or rolled back upgrades, repositories
+  # that cannot be loaded or have not changed for long, reconcile errors.
+  prometheusRule:
+    enabled: false
+    labels: {}
+    # How long a repository index may stay unchanged before it is stale.
+    indexMaxAge: 168h
+  # A Grafana dashboard in a ConfigMap, for Grafana's dashboard sidecar.
+  dashboard:
+    enabled: false
+    labels:
+      grafana_dashboard: "1"
 
 resources:
   requests:
