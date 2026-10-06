@@ -17,7 +17,7 @@ limitations under the License.
 package controller
 
 import (
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 // Profile holds the settings a platform changes to embed kubepkg. The
@@ -71,5 +71,5 @@ const (
 
 // DefaultProfile is a plain kubepkg installation.
 func DefaultProfile() Profile {
-	return Profile{Group: v1alpha1.GroupName}
+	return Profile{Group: v1beta1.GroupName}
 }

@@ -21,27 +21,27 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/repo"
 )
 
 func renderStore(t *testing.T) *repo.Store {
 	t.Helper()
-	chart := func(name string) *v1alpha1.ChartRef {
-		return &v1alpha1.ChartRef{Repository: "oci://ghcr.io/example/packages/" + name, Name: name, Version: "1.0.0-1", Digest: "sha256:" + strings.Repeat("a", 64)}
+	chart := func(name string) *v1beta1.ChartRef {
+		return &v1beta1.ChartRef{Repository: "oci://ghcr.io/example/packages/" + name, Name: name, Version: "1.0.0-1", Digest: "sha256:" + strings.Repeat("a", 64)}
 	}
-	return store(t, map[string][]v1alpha1.PackageSourceSpec{
-		"kubevirt": {{Version: "1.9.0", Variants: []v1alpha1.Variant{{
+	return store(t, map[string][]v1beta1.PackageSourceSpec{
+		"kubevirt": {{Version: "1.9.0", Variants: []v1beta1.Variant{{
 			Name:     "default",
-			Requires: []v1alpha1.Requirement{{Capability: "storage-importer"}, {Capability: "api:apps/v1"}},
-			Components: []v1alpha1.Component{
-				{Name: "cr", Chart: chart("kubevirt"), Install: &v1alpha1.ComponentInstall{Namespace: "kubevirt", DependsOn: []string{"operator"}}},
-				{Name: "operator", Chart: chart("kubevirt-operator"), Install: &v1alpha1.ComponentInstall{Namespace: "kubevirt"}},
+			Requires: []v1beta1.Requirement{{Capability: "storage-importer"}, {Capability: "api:apps/v1"}},
+			Components: []v1beta1.Component{
+				{Name: "cr", Chart: chart("kubevirt"), Install: &v1beta1.ComponentInstall{Namespace: "kubevirt", DependsOn: []string{"operator"}}},
+				{Name: "operator", Chart: chart("kubevirt-operator"), Install: &v1beta1.ComponentInstall{Namespace: "kubevirt"}},
 			},
 		}}}},
-		"cdi": {{Version: "1.66.1", Provides: []string{"storage-importer"}, Variants: []v1alpha1.Variant{{
+		"cdi": {{Version: "1.66.1", Provides: []string{"storage-importer"}, Variants: []v1beta1.Variant{{
 			Name:       "default",
-			Components: []v1alpha1.Component{{Name: "cdi", Chart: chart("cdi"), Install: &v1alpha1.ComponentInstall{Namespace: "cdi"}}},
+			Components: []v1beta1.Component{{Name: "cdi", Chart: chart("cdi"), Install: &v1beta1.ComponentInstall{Namespace: "cdi"}}},
 		}}}},
 	})
 }

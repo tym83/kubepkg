@@ -17,12 +17,12 @@ limitations under the License.
 package resolve
 
 import (
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 // RequirementsOf turns a variant's dependsOn and requires into
 // requirements, minus the packages and capabilities listed in ignore.
-func RequirementsOf(v *v1alpha1.Variant, ignore []string) []Requirement {
+func RequirementsOf(v *v1beta1.Variant, ignore []string) []Requirement {
 	ignored := map[string]bool{}
 	for _, d := range ignore {
 		ignored[d] = true
@@ -49,7 +49,7 @@ func RequirementsOf(v *v1alpha1.Variant, ignore []string) []Requirement {
 
 // ReleaseOf describes one variant of a package version for resolving.
 // A missing variant leaves the release without requirements.
-func ReleaseOf(name string, spec *v1alpha1.PackageSourceSpec, variant string) Release {
+func ReleaseOf(name string, spec *v1beta1.PackageSourceSpec, variant string) Release {
 	r := Release{Name: name, Version: spec.Version, Provides: spec.Provides, Conflicts: spec.Conflicts}
 	if r.Version == "" {
 		r.Version = Unversioned

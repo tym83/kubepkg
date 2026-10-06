@@ -29,7 +29,130 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    deprecated: true
+    deprecationWarning: kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1beta1
     name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          PackageRevision is an immutable record of one applied state of a package.
+          It is written by the operator.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: PackageRevisionSpec is the recorded state.
+            properties:
+              components:
+                items:
+                  description: ComponentSnapshot is what one component was rendered
+                    from.
+                  properties:
+                    chartDigest:
+                      description: ChartDigest identifies the chart content that was
+                        applied.
+                      type: string
+                    dependsOn:
+                      items:
+                        type: string
+                      type: array
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                    releaseName:
+                      type: string
+                    valuesDigest:
+                      description: ValuesDigest identifies the values that were applied.
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  - releaseName
+                  type: object
+                type: array
+              package:
+                type: string
+              restoredFrom:
+                description: RestoredFrom is set when this revision re-applies an
+                  earlier one.
+                format: int64
+                type: integer
+              revision:
+                format: int64
+                type: integer
+              rollbackSafe:
+                description: RollbackSafe is copied from the PackageSource at the
+                  time of the revision.
+                type: boolean
+              variant:
+                type: string
+              version:
+                type: string
+            required:
+            - package
+            - revision
+            type: object
+          status:
+            description: PackageRevisionStatus is the outcome of applying the revision.
+            properties:
+              components:
+                items:
+                  description: ComponentRevisionStatus links a component to the backend
+                    state it produced.
+                  properties:
+                    backendRevision:
+                      description: BackendRevision is e.g. the Helm release revision,
+                        used to roll back.
+                      type: integer
+                    name:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              message:
+                type: string
+              phase:
+                type: string
+            type: object
+        type: object
+        x-kubernetes-validations:
+        - message: spec is immutable
+          rule: self.spec == oldSelf.spec
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .spec.package
+      name: Package
+      type: string
+    - jsonPath: .spec.revision
+      name: Revision
+      type: integer
+    - jsonPath: .spec.version
+      name: Version
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: |-

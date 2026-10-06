@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/backend"
 )
 
@@ -121,7 +121,7 @@ func (f *fakeBackend) chartOf(key string) string {
 // bump is a chart change.
 type fakePreparer struct{}
 
-func (fakePreparer) Prepare(_ context.Context, src *v1alpha1.PackageSource, _ *v1alpha1.Variant, comp *v1alpha1.Component, c *backend.Component) (string, error) {
+func (fakePreparer) Prepare(_ context.Context, src *v1beta1.PackageSource, _ *v1beta1.Variant, comp *v1beta1.Component, c *backend.Component) (string, error) {
 	c.ChartDir = comp.Name + "@" + sourceVersion(src)
 	return "sha256:" + c.ChartDir, nil
 }
@@ -139,7 +139,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	sch := runtime.NewScheme()
-	if err := v1alpha1.AddToScheme(sch); err != nil {
+	if err := v1beta1.AddToScheme(sch); err != nil {
 		t.Fatal(err)
 	}
 	if err := corev1.AddToScheme(sch); err != nil {
@@ -152,13 +152,13 @@ func newEnv(t *testing.T) *env {
 	custom.Add(schema.GroupVersionKind{Group: "example.org", Version: "v1", Kind: "Fleet"}, meta.RESTScopeRoot)
 	ours := meta.NewDefaultRESTMapper(nil)
 	for gvk := range sch.AllKnownTypes() {
-		if gvk.Group == v1alpha1.GroupName {
+		if gvk.Group == v1beta1.GroupName {
 			ours.Add(gvk, meta.RESTScopeRoot)
 		}
 	}
 	mapper := meta.MultiRESTMapper{testrestmapper.TestOnlyStaticRESTMapper(sch), ours, custom}
 	c := fake.NewClientBuilder().WithScheme(sch).WithRESTMapper(mapper).
-		WithStatusSubresource(&v1alpha1.Package{}, &v1alpha1.PackageRevision{}, &v1alpha1.PackageSource{}, &v1alpha1.Repository{}).
+		WithStatusSubresource(&v1beta1.Package{}, &v1beta1.PackageRevision{}, &v1beta1.PackageSource{}, &v1beta1.Repository{}).
 		Build()
 	be := newFakeBackend()
 	return &env{t: t, c: c, be: be, r: &PackageReconciler{
@@ -166,16 +166,16 @@ func newEnv(t *testing.T) *env {
 	}}
 }
 
-func mkSource(name, version string, safe bool, comps ...string) *v1alpha1.PackageSource {
-	s := &v1alpha1.PackageSource{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1alpha1.PackageSourceSpec{Version: version}}
+func mkSource(name, version string, safe bool, comps ...string) *v1beta1.PackageSource {
+	s := &v1beta1.PackageSource{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1beta1.PackageSourceSpec{Version: version}}
 	if safe {
-		s.Spec.Rollback = &v1alpha1.RollbackPolicy{Safe: true}
+		s.Spec.Rollback = &v1beta1.RollbackPolicy{Safe: true}
 	}
-	v := v1alpha1.Variant{Name: "default"}
+	v := v1beta1.Variant{Name: "default"}
 	for _, c := range comps {
-		v.Components = append(v.Components, v1alpha1.Component{Name: c, Path: "x/" + c, Install: &v1alpha1.ComponentInstall{Namespace: "ns-" + name}})
+		v.Components = append(v.Components, v1beta1.Component{Name: c, Path: "x/" + c, Install: &v1beta1.ComponentInstall{Namespace: "ns-" + name}})
 	}
-	s.Spec.Variants = []v1alpha1.Variant{v}
+	s.Spec.Variants = []v1beta1.Variant{v}
 	return s
 }
 
@@ -197,9 +197,9 @@ func (e *env) reconcile(name string) ctrl.Result {
 	return res
 }
 
-func (e *env) pkg(name string) *v1alpha1.Package {
+func (e *env) pkg(name string) *v1beta1.Package {
 	e.t.Helper()
-	p := &v1alpha1.Package{}
+	p := &v1beta1.Package{}
 	if err := e.c.Get(context.Background(), types.NamespacedName{Name: name}, p); err != nil {
 		e.t.Fatal(err)
 	}
@@ -208,14 +208,14 @@ func (e *env) pkg(name string) *v1alpha1.Package {
 
 func (e *env) setVersion(name, version string, safe bool) {
 	e.t.Helper()
-	s := &v1alpha1.PackageSource{}
+	s := &v1beta1.PackageSource{}
 	if err := e.c.Get(context.Background(), types.NamespacedName{Name: name}, s); err != nil {
 		e.t.Fatal(err)
 	}
 	s.Spec.Version = version
 	s.Spec.Rollback = nil
 	if safe {
-		s.Spec.Rollback = &v1alpha1.RollbackPolicy{Safe: true}
+		s.Spec.Rollback = &v1beta1.RollbackPolicy{Safe: true}
 	}
 	if err := e.c.Update(context.Background(), s); err != nil {
 		e.t.Fatal(err)
@@ -224,8 +224,8 @@ func (e *env) setVersion(name, version string, safe bool) {
 
 func (e *env) revs(name string) string {
 	e.t.Helper()
-	var list v1alpha1.PackageRevisionList
-	if err := e.c.List(context.Background(), &list, client.MatchingLabels{v1alpha1.LabelPackage: name}); err != nil {
+	var list v1beta1.PackageRevisionList
+	if err := e.c.List(context.Background(), &list, client.MatchingLabels{v1beta1.LabelPackage: name}); err != nil {
 		e.t.Fatal(err)
 	}
 	sort.Slice(list.Items, func(i, j int) bool { return list.Items[i].Spec.Revision < list.Items[j].Spec.Revision })
@@ -240,7 +240,7 @@ func (e *env) revs(name string) string {
 	return strings.Join(parts, " ")
 }
 
-func ready(p *v1alpha1.Package) (bool, string, string) {
+func ready(p *v1beta1.Package) (bool, string, string) {
 	c := meta.FindStatusCondition(p.Status.Conditions, "Ready")
 	if c == nil {
 		return false, "", ""
@@ -250,7 +250,7 @@ func ready(p *v1alpha1.Package) (bool, string, string) {
 
 func TestInstallAndUpgrade(t *testing.T) {
 	e := newEnv(t)
-	e.create(mkSource("app", "1.0.0", true, "api", "web"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	e.create(mkSource("app", "1.0.0", true, "api", "web"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 	e.reconcile("app")
 	if ok, reason, msg := ready(e.pkg("app")); !ok {
 		t.Fatalf("not ready: %s %s", reason, msg)
@@ -281,7 +281,7 @@ func TestInstallAndUpgrade(t *testing.T) {
 
 func TestFailedUpgradeRollsBackWholePackage(t *testing.T) {
 	e := newEnv(t)
-	e.create(mkSource("app", "1.0.0", true, "api", "web"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	e.create(mkSource("app", "1.0.0", true, "api", "web"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 	e.reconcile("app")
 
 	e.setVersion("app", "1.1.0", true)
@@ -296,7 +296,7 @@ func TestFailedUpgradeRollsBackWholePackage(t *testing.T) {
 		t.Fatalf("after rollback api=%s web=%s", a, w)
 	}
 	_, reason, _ := ready(e.pkg("app"))
-	if reason != v1alpha1.ReasonUpgradeRolledBack {
+	if reason != v1beta1.ReasonUpgradeRolledBack {
 		t.Fatalf("reason = %s", reason)
 	}
 
@@ -325,7 +325,7 @@ func TestFailedUpgradeRollsBackWholePackage(t *testing.T) {
 
 func TestUnsafeVersionIsNotRolledBack(t *testing.T) {
 	e := newEnv(t)
-	e.create(mkSource("db", "1.0.0", true, "db"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
+	e.create(mkSource("db", "1.0.0", true, "db"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
 	e.reconcile("db")
 
 	e.setVersion("db", "2.0.0", false) // runs a schema migration
@@ -341,7 +341,7 @@ func TestUnsafeVersionIsNotRolledBack(t *testing.T) {
 		}
 	}
 	_, reason, msg := ready(e.pkg("db"))
-	if reason != v1alpha1.ReasonUpgradeFailed || !strings.Contains(msg, "fix forward") {
+	if reason != v1beta1.ReasonUpgradeFailed || !strings.Contains(msg, "fix forward") {
 		t.Fatalf("condition = %s %s", reason, msg)
 	}
 }
@@ -349,19 +349,19 @@ func TestUnsafeVersionIsNotRolledBack(t *testing.T) {
 func TestRequirementsGateInstall(t *testing.T) {
 	e := newEnv(t)
 	app := mkSource("app", "1.0.0", false, "app")
-	app.Spec.Variants[0].Requires = []v1alpha1.Requirement{{Package: "cert-manager", Version: ">=1.16"}, {Capability: "api:monitoring.coreos.com/v1", Optional: true}}
-	e.create(app, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	app.Spec.Variants[0].Requires = []v1beta1.Requirement{{Package: "cert-manager", Version: ">=1.16"}, {Capability: "api:monitoring.coreos.com/v1", Optional: true}}
+	e.create(app, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 
 	res := e.reconcile("app")
 	_, reason, msg := ready(e.pkg("app"))
-	if reason != v1alpha1.ReasonRequirementsNotMet || !strings.Contains(msg, "cert-manager") || res.RequeueAfter == 0 {
+	if reason != v1beta1.ReasonRequirementsNotMet || !strings.Contains(msg, "cert-manager") || res.RequeueAfter == 0 {
 		t.Fatalf("condition = %s %s, requeue %v", reason, msg, res.RequeueAfter)
 	}
 	if len(e.be.calls) != 0 {
 		t.Fatal("installed before its requirement")
 	}
 
-	e.create(mkSource("cert-manager", "1.15.0", false, "cm"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "cert-manager"}})
+	e.create(mkSource("cert-manager", "1.15.0", false, "cm"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "cert-manager"}})
 	e.reconcile("cert-manager")
 	e.reconcile("app")
 	if _, _, msg := ready(e.pkg("app")); !strings.Contains(msg, "does not satisfy >=1.16") {
@@ -381,26 +381,26 @@ func TestRequirementsGateInstall(t *testing.T) {
 
 func TestConflictAndVersionMismatch(t *testing.T) {
 	e := newEnv(t)
-	e.create(mkSource("traefik", "3.0.0", false, "t"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "traefik"}})
+	e.create(mkSource("traefik", "3.0.0", false, "t"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "traefik"}})
 	e.reconcile("traefik")
 	nginx := mkSource("nginx", "4.0.0", false, "n")
 	nginx.Spec.Conflicts = []string{"traefik"}
-	e.create(nginx, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "nginx"}})
+	e.create(nginx, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "nginx"}})
 	e.reconcile("nginx")
-	if _, reason, _ := ready(e.pkg("nginx")); reason != v1alpha1.ReasonConflict {
+	if _, reason, _ := ready(e.pkg("nginx")); reason != v1beta1.ReasonConflict {
 		t.Fatalf("reason = %s", reason)
 	}
 
-	e.create(mkSource("pinned", "2.0.0", false, "p"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "pinned"}, Spec: v1alpha1.PackageSpec{Version: "~1.4"}})
+	e.create(mkSource("pinned", "2.0.0", false, "p"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "pinned"}, Spec: v1beta1.PackageSpec{Version: "~1.4"}})
 	e.reconcile("pinned")
-	if _, reason, _ := ready(e.pkg("pinned")); reason != v1alpha1.ReasonVersionMismatch {
+	if _, reason, _ := ready(e.pkg("pinned")); reason != v1beta1.ReasonVersionMismatch {
 		t.Fatalf("reason = %s", reason)
 	}
 }
 
 func TestRollbackAnnotationAndHold(t *testing.T) {
 	e := newEnv(t)
-	e.create(mkSource("app", "1.0.0", true, "app"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	e.create(mkSource("app", "1.0.0", true, "app"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 	e.reconcile("app")
 	e.setVersion("app", "1.1.0", true)
 	e.reconcile("app")
@@ -426,7 +426,7 @@ func TestRollbackAnnotationAndHold(t *testing.T) {
 	if e.be.chartOf("ns-app/app") != "app@1.0.0" {
 		t.Fatal("the operator undid a manual rollback")
 	}
-	if c := meta.FindStatusCondition(e.pkg("app").Status.Conditions, "Ready"); c == nil || c.Status != metav1.ConditionTrue || c.Reason != v1alpha1.ReasonRolledBack {
+	if c := meta.FindStatusCondition(e.pkg("app").Status.Conditions, "Ready"); c == nil || c.Status != metav1.ConditionTrue || c.Reason != v1beta1.ReasonRolledBack {
 		t.Fatalf("a requested rollback that runs is ready: %+v", c)
 	}
 	// A real change to the desired state releases the hold.
@@ -439,12 +439,12 @@ func TestRollbackAnnotationAndHold(t *testing.T) {
 
 func TestRemovedComponentIsUninstalledAndFinalize(t *testing.T) {
 	e := newEnv(t)
-	e.create(mkSource("app", "1.0.0", true, "api", "worker"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	e.create(mkSource("app", "1.0.0", true, "api", "worker"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 	e.reconcile("app")
 
 	off := false
 	p := e.pkg("app")
-	p.Spec.Components = map[string]v1alpha1.PackageComponent{"worker": {Enabled: &off}}
+	p.Spec.Components = map[string]v1beta1.PackageComponent{"worker": {Enabled: &off}}
 	if err := e.c.Update(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -463,14 +463,14 @@ func TestRemovedComponentIsUninstalledAndFinalize(t *testing.T) {
 }
 
 func TestTopoOrderAndCycle(t *testing.T) {
-	mk := func(name string, deps ...string) v1alpha1.Component {
-		return v1alpha1.Component{Name: name, Install: &v1alpha1.ComponentInstall{Namespace: "x", DependsOn: deps}}
+	mk := func(name string, deps ...string) v1beta1.Component {
+		return v1beta1.Component{Name: name, Install: &v1beta1.ComponentInstall{Namespace: "x", DependsOn: deps}}
 	}
-	order, err := topoOrder([]v1alpha1.Component{mk("web", "api"), mk("api", "db"), mk("db")})
+	order, err := topoOrder([]v1beta1.Component{mk("web", "api"), mk("api", "db"), mk("db")})
 	if err != nil || strings.Join(order, ",") != "db,api,web" {
 		t.Fatalf("order = %v, %v", order, err)
 	}
-	if _, err := topoOrder([]v1alpha1.Component{mk("a", "b"), mk("b", "a")}); err == nil || !strings.Contains(err.Error(), "cycle") {
+	if _, err := topoOrder([]v1beta1.Component{mk("a", "b"), mk("b", "a")}); err == nil || !strings.Contains(err.Error(), "cycle") {
 		t.Fatalf("cycle not reported: %v", err)
 	}
 }
@@ -478,13 +478,13 @@ func TestTopoOrderAndCycle(t *testing.T) {
 func TestMetaPackageIsReadyWhenItsMembersAre(t *testing.T) {
 	e := newEnv(t)
 	meta := mkSource("distro", "1.0.0", false)
-	meta.Spec.Variants[0].Requires = []v1alpha1.Requirement{{Package: "cert-manager", Version: "~1.16"}}
-	e.create(meta, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "distro"}})
+	meta.Spec.Variants[0].Requires = []v1beta1.Requirement{{Package: "cert-manager", Version: "~1.16"}}
+	e.create(meta, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "distro"}})
 	e.reconcile("distro")
-	if ok, r, _ := ready(e.pkg("distro")); ok || r != v1alpha1.ReasonRequirementsNotMet {
+	if ok, r, _ := ready(e.pkg("distro")); ok || r != v1beta1.ReasonRequirementsNotMet {
 		t.Fatalf("a meta package must wait for its members, got ready=%v %s", ok, r)
 	}
-	e.create(mkSource("cert-manager", "1.16.2", true, "controller"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "cert-manager"}})
+	e.create(mkSource("cert-manager", "1.16.2", true, "controller"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "cert-manager"}})
 	e.reconcile("cert-manager")
 	e.reconcile("distro")
 	if ok, r, msg := ready(e.pkg("distro")); !ok {
@@ -522,7 +522,7 @@ func TestAsyncComponentsGoInDependencyOrder(t *testing.T) {
 	e.r.Backend = slow
 	src := mkSource("virt", "1.0.0", false, "operator", "cr")
 	src.Spec.Variants[0].Components[1].Install.DependsOn = []string{"operator"}
-	e.create(src, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "virt"}})
+	e.create(src, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "virt"}})
 
 	e.reconcile("virt")
 	e.reconcile("virt")
@@ -531,7 +531,7 @@ func TestAsyncComponentsGoInDependencyOrder(t *testing.T) {
 			t.Fatalf("cr applied before operator was ready: %v", e.be.calls)
 		}
 	}
-	if ok, r, _ := ready(e.pkg("virt")); ok || r != v1alpha1.ReasonProgressing {
+	if ok, r, _ := ready(e.pkg("virt")); ok || r != v1beta1.ReasonProgressing {
 		t.Fatalf("want Progressing, got ready=%v %s", ok, r)
 	}
 
@@ -559,12 +559,12 @@ func widget(ns, name, available string) *unstructured.Unstructured {
 func TestReadyWhenWaitsForTheResourcesCondition(t *testing.T) {
 	e := newEnv(t)
 	src := mkSource("virt", "1.0.0", true, "operator")
-	src.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1alpha1.ReadyCondition{{APIVersion: "example.org/v1", Kind: "Widget", Name: "main", Condition: "Available"}}
-	e.create(src, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "virt"}})
+	src.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1beta1.ReadyCondition{{APIVersion: "example.org/v1", Kind: "Widget", Name: "main", Condition: "Available"}}
+	e.create(src, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "virt"}})
 
 	e.reconcile("virt")
 	e.reconcile("virt")
-	if ok, r, msg := ready(e.pkg("virt")); ok || r != v1alpha1.ReasonProgressing || !strings.Contains(msg, "not created yet") {
+	if ok, r, msg := ready(e.pkg("virt")); ok || r != v1beta1.ReasonProgressing || !strings.Contains(msg, "not created yet") {
 		t.Fatalf("before the resource exists: %v %s %q", ok, r, msg)
 	}
 
@@ -590,10 +590,10 @@ func TestReadyWhenWaitsForTheResourcesCondition(t *testing.T) {
 func TestReadyWhenClusterScopedAndUnservedKinds(t *testing.T) {
 	e := newEnv(t)
 	src := mkSource("fleet", "1.0.0", true, "operator")
-	src.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1alpha1.ReadyCondition{
+	src.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1beta1.ReadyCondition{
 		{APIVersion: "example.org/v1", Kind: "Fleet", Name: "main", Condition: "Ready"},
 	}
-	e.create(src, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "fleet"}})
+	e.create(src, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "fleet"}})
 	f := &unstructured.Unstructured{}
 	f.SetAPIVersion("example.org/v1")
 	f.SetKind("Fleet")
@@ -609,8 +609,8 @@ func TestReadyWhenClusterScopedAndUnservedKinds(t *testing.T) {
 	}
 
 	src2 := mkSource("later", "1.0.0", true, "operator")
-	src2.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1alpha1.ReadyCondition{{APIVersion: "nothing.example.org/v1", Kind: "Ghost", Name: "x", Condition: "Ready"}}
-	e.create(src2, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "later"}})
+	src2.Spec.Variants[0].Components[0].Install.ReadyWhen = []v1beta1.ReadyCondition{{APIVersion: "nothing.example.org/v1", Kind: "Ghost", Name: "x", Condition: "Ready"}}
+	e.create(src2, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "later"}})
 	e.reconcile("later")
 	e.reconcile("later")
 	if ok, _, msg := ready(e.pkg("later")); ok || !strings.Contains(msg, "not served yet") {
@@ -620,7 +620,7 @@ func TestReadyWhenClusterScopedAndUnservedKinds(t *testing.T) {
 
 func TestMetricsFollowRevisions(t *testing.T) {
 	e := newEnv(t)
-	e.create(mkSource("metered", "1.0.0", true, "api", "web"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "metered"}})
+	e.create(mkSource("metered", "1.0.0", true, "api", "web"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "metered"}})
 	e.reconcile("metered")
 	if v := testutil.ToFloat64(packageReady.WithLabelValues("metered")); v != 1 {
 		t.Fatalf("ready after install = %v", v)
@@ -654,9 +654,9 @@ func TestMetricsFollowRevisions(t *testing.T) {
 	}
 }
 
-func hookedSource(version string) *v1alpha1.PackageSource {
+func hookedSource(version string) *v1beta1.PackageSource {
 	src := mkSource("db", version, false, "migrate", "server")
-	src.Spec.Variants[0].Components[0].Install.Phase = v1alpha1.PhasePreUpgrade
+	src.Spec.Variants[0].Components[0].Install.Phase = v1beta1.PhasePreUpgrade
 	return src
 }
 
@@ -672,7 +672,7 @@ func callsMatching(calls []string, sub string) []int {
 
 func TestPreUpgradeHookRunsFirstOnlyOnUpgrades(t *testing.T) {
 	e := newEnv(t)
-	e.create(hookedSource("1.0.0"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
+	e.create(hookedSource("1.0.0"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
 	e.reconcile("db")
 	if ok, r, msg := ready(e.pkg("db")); !ok {
 		t.Fatalf("install: %s %q", r, msg)
@@ -709,7 +709,7 @@ func TestPreUpgradeHookRunsFirstOnlyOnUpgrades(t *testing.T) {
 	// A change within the version does not run it.
 	e.be.calls = nil
 	pkg := e.pkg("db")
-	pkg.Spec.Components = map[string]v1alpha1.PackageComponent{"server": {Values: &apiextensionsv1.JSON{Raw: []byte(`{"replicas":3}`)}}}
+	pkg.Spec.Components = map[string]v1beta1.PackageComponent{"server": {Values: &apiextensionsv1.JSON{Raw: []byte(`{"replicas":3}`)}}}
 	if err := e.c.Update(context.Background(), pkg); err != nil {
 		t.Fatal(err)
 	}
@@ -721,7 +721,7 @@ func TestPreUpgradeHookRunsFirstOnlyOnUpgrades(t *testing.T) {
 
 func TestFailedHookStopsTheUpgrade(t *testing.T) {
 	e := newEnv(t)
-	e.create(hookedSource("1.0.0"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
+	e.create(hookedSource("1.0.0"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
 	e.reconcile("db")
 	e.setVersion("db", "2.0.0", false)
 	e.be.failOn["migrate"] = true
@@ -741,7 +741,7 @@ func TestDependingOnAHookIsRefused(t *testing.T) {
 	e := newEnv(t)
 	src := hookedSource("1.0.0")
 	src.Spec.Variants[0].Components[1].Install.DependsOn = []string{"migrate"}
-	e.create(src, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
+	e.create(src, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "db"}})
 	res, err := e.r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "db"}})
 	_ = res
 	msg := ""
@@ -755,7 +755,7 @@ func TestDependingOnAHookIsRefused(t *testing.T) {
 	}
 }
 
-func (e *env) revisionsOf(name string) []v1alpha1.PackageRevision {
+func (e *env) revisionsOf(name string) []v1beta1.PackageRevision {
 	e.t.Helper()
 	revs, err := e.r.revisions(context.Background(), name)
 	if err != nil {
@@ -766,9 +766,9 @@ func (e *env) revisionsOf(name string) []v1alpha1.PackageRevision {
 
 func TestAdoptTakesOverOnceInTheReleaseItNames(t *testing.T) {
 	e := newEnv(t)
-	pkg := &v1alpha1.Package{
+	pkg := &v1beta1.Package{
 		ObjectMeta: metav1.ObjectMeta{Name: "app", Annotations: map[string]string{AnnotationAdopt: "true"}},
-		Spec: v1alpha1.PackageSpec{Components: map[string]v1alpha1.PackageComponent{
+		Spec: v1beta1.PackageSpec{Components: map[string]v1beta1.PackageComponent{
 			"web": {ReleaseName: "legacy-web", Namespace: "legacy"},
 		}},
 	}

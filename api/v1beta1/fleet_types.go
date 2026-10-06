@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -60,7 +60,7 @@ type ClusterStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
-// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1beta1"
+// +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Kubernetes",type="string",JSONPath=".status.kubernetesVersion"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].message"
@@ -173,7 +173,7 @@ type PackageSetStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName={pkgset}
-// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1beta1"
+// +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Ready Clusters",type="integer",JSONPath=".status.readyClusters"
 // +kubebuilder:printcolumn:name="Updated",type="integer",JSONPath=".status.updatedClusters"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"

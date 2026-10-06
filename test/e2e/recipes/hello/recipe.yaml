@@ -1,4 +1,4 @@
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: Recipe
 metadata: {name: hello}
 spec:

@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 func clusterCmd(cl *cluster) *cobra.Command {
@@ -54,7 +54,7 @@ func (c *cluster) coreClient() (client.Client, error) {
 	if err := corev1.AddToScheme(scheme); err != nil {
 		return nil, err
 	}
-	if err := v1alpha1.AddToSchemeForGroup(c.apiGroup)(scheme); err != nil {
+	if err := v1beta1.AddToSchemeForGroup(c.apiGroup)(scheme); err != nil {
 		return nil, err
 	}
 	return client.New(cfg, client.Options{Scheme: scheme})
@@ -116,10 +116,10 @@ func clusterAddCmd(cl *cluster) *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			mc := &v1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: args[0]}}
+			mc := &v1beta1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: args[0]}}
 			if _, err := controllerutil.CreateOrUpdate(ctx, c, mc, func() error {
 				mc.Labels = lbls
-				mc.Spec.KubeconfigSecretRef = v1alpha1.SecretKeyRef{Namespace: namespace, Name: sec.Name, Key: "kubeconfig"}
+				mc.Spec.KubeconfigSecretRef = v1beta1.SecretKeyRef{Namespace: namespace, Name: sec.Name, Key: "kubeconfig"}
 				return nil
 			}); err != nil {
 				return err
@@ -146,7 +146,7 @@ func clusterListCmd(cl *cluster) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var list v1alpha1.ClusterList
+			var list v1beta1.ClusterList
 			if err := c.List(cmd.Context(), &list); err != nil {
 				return err
 			}
@@ -179,7 +179,7 @@ func setCmd(cl *cluster) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var list v1alpha1.PackageSetList
+			var list v1beta1.PackageSetList
 			if err := c.List(cmd.Context(), &list); err != nil {
 				return err
 			}
@@ -219,7 +219,7 @@ stand out. A version that differs from the most common one is marked *.`,
 			if err != nil {
 				return err
 			}
-			s := &v1alpha1.PackageSet{}
+			s := &v1beta1.PackageSet{}
 			if err := c.Get(cmd.Context(), client.ObjectKey{Name: args[0]}, s); err != nil {
 				return err
 			}

@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/repo"
 )
 
@@ -87,20 +87,20 @@ func (e *repoEnv) fetch(name string) ctrl.Result {
 	return res
 }
 
-func (e *repoEnv) source(name string) *v1alpha1.PackageSource {
+func (e *repoEnv) source(name string) *v1beta1.PackageSource {
 	e.t.Helper()
-	s := &v1alpha1.PackageSource{}
+	s := &v1beta1.PackageSource{}
 	if err := e.c.Get(context.Background(), types.NamespacedName{Name: name}, s); err != nil {
 		e.t.Fatal(err)
 	}
 	return s
 }
 
-func repository(name, url string, priority int32) *v1alpha1.Repository {
-	return &v1alpha1.Repository{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1alpha1.RepositorySpec{URL: url, Priority: priority}}
+func repository(name, url string, priority int32) *v1beta1.Repository {
+	return &v1beta1.Repository{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1beta1.RepositorySpec{URL: url, Priority: priority}}
 }
 
-func reason(p *v1alpha1.Package) (string, string) {
+func reason(p *v1beta1.Package) (string, string) {
 	c := meta.FindStatusCondition(p.Status.Conditions, "Ready")
 	if c == nil {
 		return "", ""
@@ -111,12 +111,12 @@ func reason(p *v1alpha1.Package) (string, string) {
 func TestInstallFromRepositoryAndFollowConstraint(t *testing.T) {
 	e := newRepoEnv(t)
 	e.indexes["test://main"] = indexOf(t, "1.0.0", "1.1.0")
-	e.create(repository("main", "test://main", 0), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}, Spec: v1alpha1.PackageSpec{Version: "~1.0"}})
+	e.create(repository("main", "test://main", 0), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}, Spec: v1beta1.PackageSpec{Version: "~1.0"}})
 
 	e.fetch("main")
 	e.reconcile("app")
 	src := e.source("app")
-	if src.Spec.Version != "1.0.0" || src.Labels[v1alpha1.LabelRepository] != "main" || len(src.OwnerReferences) != 1 {
+	if src.Spec.Version != "1.0.0" || src.Labels[v1beta1.LabelRepository] != "main" || len(src.OwnerReferences) != 1 {
 		t.Fatalf("source from repository: version %s labels %v owners %v", src.Spec.Version, src.Labels, src.OwnerReferences)
 	}
 	e.reconcile("app")
@@ -140,7 +140,7 @@ func TestInstallFromRepositoryAndFollowConstraint(t *testing.T) {
 func TestHandWrittenSourceWins(t *testing.T) {
 	e := newRepoEnv(t)
 	e.indexes["test://main"] = indexOf(t, "2.0.0")
-	e.create(repository("main", "test://main", 0), mkSource("app", "1.0.0", true, "web"), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	e.create(repository("main", "test://main", 0), mkSource("app", "1.0.0", true, "web"), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 	e.fetch("main")
 	e.reconcile("app")
 	if v := e.source("app").Spec.Version; v != "1.0.0" {
@@ -152,7 +152,7 @@ func TestWaitsForRepositoriesAndReportsMissingVersions(t *testing.T) {
 	e := newRepoEnv(t)
 	e.indexes["test://main"] = indexOf(t, "1.0.0")
 	e.create(repository("main", "test://main", 0), repository("down", "test://down", 10),
-		&v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}, Spec: v1alpha1.PackageSpec{Version: ">=2"}})
+		&v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}, Spec: v1beta1.PackageSpec{Version: ">=2"}})
 
 	e.fetch("main")
 	if res := e.reconcile("app"); res.RequeueAfter == 0 {
@@ -163,7 +163,7 @@ func TestWaitsForRepositoriesAndReportsMissingVersions(t *testing.T) {
 	}
 
 	e.fetch("down")
-	rp := &v1alpha1.Repository{}
+	rp := &v1beta1.Repository{}
 	if err := e.c.Get(context.Background(), types.NamespacedName{Name: "down"}, rp); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestWaitsForRepositoriesAndReportsMissingVersions(t *testing.T) {
 func TestFailedRefreshKeepsTheLoadedIndex(t *testing.T) {
 	e := newRepoEnv(t)
 	e.indexes["test://main"] = indexOf(t, "1.0.0")
-	e.create(repository("main", "test://main", 0), &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	e.create(repository("main", "test://main", 0), &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 	e.fetch("main")
 	e.indexes["test://main"] = []byte("not an index")
 	if res := e.fetch("main"); res.RequeueAfter > repositoryRetry {
@@ -218,10 +218,10 @@ func TestSignedRepositories(t *testing.T) {
 	}
 	rp := repository("main", "test://main", 0)
 	rp.Spec.PublicKeys = []string{string(pub)}
-	e.create(rp, &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	e.create(rp, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 	status := func() (string, string) {
 		t.Helper()
-		got := &v1alpha1.Repository{}
+		got := &v1beta1.Repository{}
 		if err := e.c.Get(context.Background(), types.NamespacedName{Name: "main"}, got); err != nil {
 			t.Fatal(err)
 		}

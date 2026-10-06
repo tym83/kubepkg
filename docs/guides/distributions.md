@@ -33,7 +33,7 @@ Publish it as described in [Repositories and trust](repositories.md#publishing-a
 A recipe without charts builds a **meta package**, which consists only of requirements:
 
 ```yaml title="recipes/virtualization/recipe.yaml"
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: Recipe
 metadata:
   name: virtualization
@@ -57,7 +57,7 @@ spec:
 The whole distribution is one more meta package:
 
 ```yaml title="recipes/mydistro/recipe.yaml"
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: Recipe
 metadata:
   name: mydistro

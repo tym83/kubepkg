@@ -26,12 +26,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 // readyWhenMet checks a component's readyWhen conditions. It returns the
 // first condition not met, described for the Package status, or "".
-func (r *PackageReconciler) readyWhenMet(ctx context.Context, conds []v1alpha1.ReadyCondition, namespace string) (string, error) {
+func (r *PackageReconciler) readyWhenMet(ctx context.Context, conds []v1beta1.ReadyCondition, namespace string) (string, error) {
 	for _, c := range conds {
 		gv, err := schema.ParseGroupVersion(c.APIVersion)
 		if err != nil {

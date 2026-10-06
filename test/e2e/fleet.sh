@@ -61,7 +61,7 @@ until_true "the hub does not reach both clusters" 180 bash -c "[[ \$(${K} get cl
 
 step "a set with a canary, one cluster at a time"
 ${K} apply -f - >/dev/null <<EOF
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: PackageSet
 metadata: {name: prod}
 spec:
@@ -116,7 +116,7 @@ step "the member moves to another set without a reinstall"
 uid=$(${M} -n "${NS}" get deploy "${PKG}" -o jsonpath='{.metadata.uid}')
 revs=$(${M} get packagerevisions.kubepkg.dev -l "kubepkg.dev/package=${PKG}" -o name | wc -l | tr -d ' ')
 ${K} apply -f - >/dev/null <<EOF
-apiVersion: kubepkg.dev/v1alpha1
+apiVersion: kubepkg.dev/v1beta1
 kind: PackageSet
 metadata: {name: staging}
 spec:

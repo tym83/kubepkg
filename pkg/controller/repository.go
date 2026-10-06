@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/repo"
 )
 
@@ -66,7 +66,7 @@ type RepositoryReconciler struct {
 
 // Reconcile fetches one repository index.
 func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	rp := &v1alpha1.Repository{}
+	rp := &v1beta1.Repository{}
 	if err := r.Get(ctx, req.NamespacedName, rp); err != nil {
 		if apierrors.IsNotFound(err) {
 			r.Repositories.Store.Delete(req.Name)
@@ -109,7 +109,7 @@ func (r *RepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
-func (r *RepositoryReconciler) load(ctx context.Context, rp *v1alpha1.Repository) (*repo.Index, string, string, error) {
+func (r *RepositoryReconciler) load(ctx context.Context, rp *v1beta1.Repository) (*repo.Index, string, string, error) {
 	idx, raw, trust, err := repo.LoadRepository(ctx, r.Repositories.Fetchers, rp.Spec, rp.Status, time.Now())
 	switch {
 	case errors.Is(err, repo.ErrBadSignature), errors.Is(err, repo.ErrExpired):
@@ -133,7 +133,7 @@ func (r *RepositoryReconciler) load(ctx context.Context, rp *v1alpha1.Repository
 func (r *RepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("kubepkg-repository").
-		For(&v1alpha1.Repository{}).
+		For(&v1beta1.Repository{}).
 		Complete(r)
 }
 
@@ -141,14 +141,14 @@ func (r *RepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // unless one was written by hand. It returns done when the reconcile
 // should stop here: the source was just written, or no version can be
 // chosen yet.
-func (r *PackageReconciler) selectSource(ctx context.Context, pkg *v1alpha1.Package) (ctrl.Result, bool, error) {
-	src := &v1alpha1.PackageSource{}
+func (r *PackageReconciler) selectSource(ctx context.Context, pkg *v1beta1.Package) (ctrl.Result, bool, error) {
+	src := &v1beta1.PackageSource{}
 	err := r.Get(ctx, types.NamespacedName{Name: pkg.Name}, src)
 	exists := err == nil
 	if err != nil && !apierrors.IsNotFound(err) {
 		return ctrl.Result{}, true, err
 	}
-	if exists && src.Labels[v1alpha1.LabelRepository] == "" {
+	if exists && src.Labels[v1beta1.LabelRepository] == "" {
 		return ctrl.Result{}, false, nil // written by hand: it wins
 	}
 
@@ -179,11 +179,11 @@ func (r *PackageReconciler) selectSource(ctx context.Context, pkg *v1alpha1.Pack
 		setReady(pkg, metav1.ConditionFalse, ReasonVersionNotAvailable, err.Error())
 		return ctrl.Result{}, true, nil
 	}
-	if exists && src.Labels[v1alpha1.LabelRepository] == sel.Repository && src.Annotations[AnnotationSpecDigest] == sel.Version.Digest {
+	if exists && src.Labels[v1beta1.LabelRepository] == sel.Repository && src.Annotations[AnnotationSpecDigest] == sel.Version.Digest {
 		return ctrl.Result{}, false, nil
 	}
 
-	want := &v1alpha1.PackageSource{ObjectMeta: metav1.ObjectMeta{Name: pkg.Name}}
+	want := &v1beta1.PackageSource{ObjectMeta: metav1.ObjectMeta{Name: pkg.Name}}
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, want, func() error {
 		if want.Labels == nil {
 			want.Labels = map[string]string{}
@@ -191,7 +191,7 @@ func (r *PackageReconciler) selectSource(ctx context.Context, pkg *v1alpha1.Pack
 		if want.Annotations == nil {
 			want.Annotations = map[string]string{}
 		}
-		want.Labels[v1alpha1.LabelRepository] = sel.Repository
+		want.Labels[v1beta1.LabelRepository] = sel.Repository
 		want.Annotations[AnnotationSpecDigest] = sel.Version.Digest
 		want.Spec = *sel.Version.Spec.DeepCopy()
 		// The source goes away with its package.
@@ -200,7 +200,7 @@ func (r *PackageReconciler) selectSource(ctx context.Context, pkg *v1alpha1.Pack
 	if err != nil {
 		return ctrl.Result{}, true, fmt.Errorf("write PackageSource from repository %s: %w", sel.Repository, err)
 	}
-	setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonProgressing,
+	setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing,
 		fmt.Sprintf("selected %s %s build %d from repository %s", pkg.Name, sel.Version.Version, sel.Version.Build, sel.Repository))
 	return ctrl.Result{}, true, nil
 }
@@ -208,7 +208,7 @@ func (r *PackageReconciler) selectSource(ctx context.Context, pkg *v1alpha1.Pack
 // repositoriesPending reports whether a Repository the package may use
 // has not been fetched yet.
 func (r *PackageReconciler) repositoriesPending(ctx context.Context, only string) (bool, error) {
-	var list v1alpha1.RepositoryList
+	var list v1beta1.RepositoryList
 	if err := r.List(ctx, &list); err != nil {
 		return false, err
 	}
@@ -224,7 +224,7 @@ func (r *PackageReconciler) repositoriesPending(ctx context.Context, only string
 // version any of them selects.
 func allPackages(c client.Client) handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
-		var pkgs v1alpha1.PackageList
+		var pkgs v1beta1.PackageList
 		if err := c.List(ctx, &pkgs); err != nil {
 			return nil
 		}

@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/repo"
 	"github.com/tym83/kubepkg/pkg/version"
 )
@@ -54,7 +54,7 @@ func DefaultOptions() Options {
 	return Options{
 		Name:          "kubepkg",
 		Short:         "Package manager for Kubernetes platforms and distributions",
-		APIGroup:      v1alpha1.GroupName,
+		APIGroup:      v1beta1.GroupName,
 		IndexFetchers: repo.DefaultFetchers(),
 		Policy:        repo.AllowAll{},
 	}
@@ -77,7 +77,7 @@ func (c *cluster) client() (client.Client, error) {
 		return nil, err
 	}
 	scheme := runtime.NewScheme()
-	if err := v1alpha1.AddToSchemeForGroup(c.apiGroup)(scheme); err != nil {
+	if err := v1beta1.AddToSchemeForGroup(c.apiGroup)(scheme); err != nil {
 		return nil, err
 	}
 	return client.New(cfg, client.Options{Scheme: scheme})

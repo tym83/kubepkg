@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 func historyCmd(cl *cluster) *cobra.Command {
@@ -38,8 +38,8 @@ func historyCmd(cl *cluster) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var revs v1alpha1.PackageRevisionList
-			if err := c.List(cmd.Context(), &revs, client.MatchingLabels{v1alpha1.LabelPackage: args[0]}); err != nil {
+			var revs v1beta1.PackageRevisionList
+			if err := c.List(cmd.Context(), &revs, client.MatchingLabels{v1beta1.LabelPackage: args[0]}); err != nil {
 				return err
 			}
 			if len(revs.Items) == 0 {

@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/repo"
 	"github.com/tym83/kubepkg/pkg/resolve"
 )
@@ -37,17 +37,17 @@ type servedAPIs map[string]bool
 
 func (a servedAPIs) Served(context.Context) (map[string]bool, error) { return a, nil }
 
-func spec(version string, requires ...v1alpha1.Requirement) v1alpha1.PackageSourceSpec {
-	return v1alpha1.PackageSourceSpec{
+func spec(version string, requires ...v1beta1.Requirement) v1beta1.PackageSourceSpec {
+	return v1beta1.PackageSourceSpec{
 		Version: version,
 		CRDs:    []string{"things.example.org"},
-		Variants: []v1alpha1.Variant{{Name: "default", Requires: requires, Components: []v1alpha1.Component{
-			{Name: "main", Chart: &v1alpha1.ChartRef{Repository: "oci://example.org/c", Name: "main", Version: version}, Install: &v1alpha1.ComponentInstall{Namespace: "ns"}},
+		Variants: []v1beta1.Variant{{Name: "default", Requires: requires, Components: []v1beta1.Component{
+			{Name: "main", Chart: &v1beta1.ChartRef{Repository: "oci://example.org/c", Name: "main", Version: version}, Install: &v1beta1.ComponentInstall{Namespace: "ns"}},
 		}}},
 	}
 }
 
-func store(t *testing.T, pkgs map[string][]v1alpha1.PackageSourceSpec) *repo.Store {
+func store(t *testing.T, pkgs map[string][]v1beta1.PackageSourceSpec) *repo.Store {
 	t.Helper()
 	idx := &repo.Index{Kind: repo.IndexKind, Packages: map[string]repo.Package{}}
 	for name, specs := range pkgs {
@@ -69,15 +69,15 @@ func store(t *testing.T, pkgs map[string][]v1alpha1.PackageSourceSpec) *repo.Sto
 func fakeClient(t *testing.T, objs ...client.Object) client.Client {
 	t.Helper()
 	sch := runtime.NewScheme()
-	if err := v1alpha1.AddToScheme(sch); err != nil {
+	if err := v1beta1.AddToScheme(sch); err != nil {
 		t.Fatal(err)
 	}
-	return fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).WithStatusSubresource(&v1alpha1.Package{}).Build()
+	return fake.NewClientBuilder().WithScheme(sch).WithObjects(objs...).WithStatusSubresource(&v1beta1.Package{}).Build()
 }
 
 func TestInstallWithRequirements(t *testing.T) {
-	s := store(t, map[string][]v1alpha1.PackageSourceSpec{
-		"kubevirt": {spec("1.9.0", v1alpha1.Requirement{Package: "cdi", Version: ">=1.60"}), spec("1.8.2", v1alpha1.Requirement{Package: "cdi"})},
+	s := store(t, map[string][]v1beta1.PackageSourceSpec{
+		"kubevirt": {spec("1.9.0", v1beta1.Requirement{Package: "cdi", Version: ">=1.60"}), spec("1.8.2", v1beta1.Requirement{Package: "cdi"})},
 		"cdi":      {spec("1.59.0"), spec("1.60.1"), spec("1.61.0")},
 	})
 	c := fakeClient(t)
@@ -103,8 +103,8 @@ func TestInstallWithRequirements(t *testing.T) {
 	if err := Apply(ctx, c, steps); err != nil {
 		t.Fatal(err)
 	}
-	get := func(name string) *v1alpha1.Package {
-		p := &v1alpha1.Package{}
+	get := func(name string) *v1beta1.Package {
+		p := &v1beta1.Package{}
 		if err := c.Get(ctx, types.NamespacedName{Name: name}, p); err != nil {
 			t.Fatal(err)
 		}
@@ -119,12 +119,12 @@ func TestInstallWithRequirements(t *testing.T) {
 }
 
 func TestInstallKeepsAndUpgrades(t *testing.T) {
-	s := store(t, map[string][]v1alpha1.PackageSourceSpec{
-		"kubevirt": {spec("1.9.0", v1alpha1.Requirement{Package: "cdi"}), spec("1.10.0", v1alpha1.Requirement{Package: "cdi"})},
+	s := store(t, map[string][]v1beta1.PackageSourceSpec{
+		"kubevirt": {spec("1.9.0", v1beta1.Requirement{Package: "cdi"}), spec("1.10.0", v1beta1.Requirement{Package: "cdi"})},
 		"cdi":      {spec("1.60.0"), spec("1.61.0")},
 	})
-	installed := func(name, version string) *v1alpha1.Package {
-		return &v1alpha1.Package{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1alpha1.PackageSpec{Version: "~" + version[:strings.LastIndex(version, ".")]}, Status: v1alpha1.PackageStatus{Version: version}}
+	installed := func(name, version string) *v1beta1.Package {
+		return &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1beta1.PackageSpec{Version: "~" + version[:strings.LastIndex(version, ".")]}, Status: v1beta1.PackageStatus{Version: version}}
 	}
 	c := fakeClient(t, installed("kubevirt", "1.9.0"), installed("cdi", "1.60.0"))
 	ctx := context.Background()
@@ -142,7 +142,7 @@ func TestInstallKeepsAndUpgrades(t *testing.T) {
 	if err := Apply(ctx, c, steps); err != nil {
 		t.Fatal(err)
 	}
-	p := &v1alpha1.Package{}
+	p := &v1beta1.Package{}
 	if err := c.Get(ctx, types.NamespacedName{Name: "kubevirt"}, p); err != nil {
 		t.Fatal(err)
 	}
@@ -158,17 +158,17 @@ func TestInstallKeepsAndUpgrades(t *testing.T) {
 }
 
 func TestPlanFailsOnUnsatisfiable(t *testing.T) {
-	s := store(t, map[string][]v1alpha1.PackageSourceSpec{"kubevirt": {spec("1.9.0", v1alpha1.Requirement{Package: "cdi", Version: ">=2"})}, "cdi": {spec("1.60.0")}})
+	s := store(t, map[string][]v1beta1.PackageSourceSpec{"kubevirt": {spec("1.9.0", v1beta1.Requirement{Package: "cdi", Version: ">=2"})}, "cdi": {spec("1.60.0")}})
 	if _, err := Plan(context.Background(), fakeClient(t), s, repo.AllowAll{}, servedAPIs{}, "", parseRequests([]string{"kubevirt"})); err == nil || !strings.Contains(err.Error(), "cdi") {
 		t.Fatalf("got %v", err)
 	}
 }
 
 func TestMetaPackageMovesItsMembers(t *testing.T) {
-	meta := func(version, kubevirt string) v1alpha1.PackageSourceSpec {
-		return v1alpha1.PackageSourceSpec{Version: version, Variants: []v1alpha1.Variant{{Name: "default", Requires: []v1alpha1.Requirement{{Package: "kubevirt", Version: kubevirt}, {Package: "cdi"}}}}}
+	meta := func(version, kubevirt string) v1beta1.PackageSourceSpec {
+		return v1beta1.PackageSourceSpec{Version: version, Variants: []v1beta1.Variant{{Name: "default", Requires: []v1beta1.Requirement{{Package: "kubevirt", Version: kubevirt}, {Package: "cdi"}}}}}
 	}
-	s := store(t, map[string][]v1alpha1.PackageSourceSpec{
+	s := store(t, map[string][]v1beta1.PackageSourceSpec{
 		"distro":   {meta("1.0.0", "~1.9"), meta("2.0.0", "~1.10")},
 		"kubevirt": {spec("1.9.0"), spec("1.9.3"), spec("1.10.1")},
 		"cdi":      {spec("1.60.0")},
@@ -187,7 +187,7 @@ func TestMetaPackageMovesItsMembers(t *testing.T) {
 	}
 	version := func(name string) string {
 		t.Helper()
-		p := &v1alpha1.Package{}
+		p := &v1beta1.Package{}
 		if err := c.Get(ctx, types.NamespacedName{Name: name}, p); err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +195,7 @@ func TestMetaPackageMovesItsMembers(t *testing.T) {
 	}
 	settle := func(name, applied string) {
 		t.Helper()
-		p := &v1alpha1.Package{}
+		p := &v1beta1.Package{}
 		if err := c.Get(ctx, types.NamespacedName{Name: name}, p); err != nil {
 			t.Fatal(err)
 		}

@@ -39,7 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/tym83/kubepkg/api/v1alpha1"
+	"github.com/tym83/kubepkg/api/v1beta1"
 	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/backend/argo"
 	"github.com/tym83/kubepkg/pkg/backend/flux"
@@ -197,7 +197,7 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 		return fmt.Errorf("unknown backend %q", o.Backend)
 	}
 	scheme := runtime.NewScheme()
-	adds := append([]func(*runtime.Scheme) error{corev1.AddToScheme, v1alpha1.AddToSchemeForGroup(o.Profile.Group)}, o.AddToScheme...)
+	adds := append([]func(*runtime.Scheme) error{corev1.AddToScheme, v1beta1.AddToSchemeForGroup(o.Profile.Group)}, o.AddToScheme...)
 	for _, add := range adds {
 		if err := add(scheme); err != nil {
 			return err

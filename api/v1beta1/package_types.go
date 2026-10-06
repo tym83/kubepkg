@@ -15,7 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1beta1
 
 import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -47,7 +47,7 @@ const (
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,shortName={pkg,pkgs}
-// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1beta1"
+// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Variant",type="string",JSONPath=".spec.variant",description="Selected variant"
 // +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".status.version",description="Applied version"

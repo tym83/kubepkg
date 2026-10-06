@@ -32,6 +32,8 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    deprecated: true
+    deprecationWarning: kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1beta1
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -550,6 +552,537 @@ spec:
                   Variants is a comma-separated list of package variant names
                   This field is populated by the controller based on spec.variants keys
                 type: string
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - description: Package version
+      jsonPath: .spec.version
+      name: Version
+      type: string
+    - description: Packaging build of that version
+      jsonPath: .spec.build
+      name: Build
+      type: integer
+    - description: Repository the version was taken from; empty when written by hand
+      jsonPath: .metadata.labels.kubepkg\.dev/repository
+      name: Repository
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          PackageSource is one package at one version: where its charts come from,
+          what it provides and requires, and how its components are installed.
+          The name is the package name.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: PackageSourceSpec defines the desired state of PackageSource
+            properties:
+              build:
+                description: |-
+                  Build numbers the packagings of one upstream version: a new patch or
+                  default in the recipe makes a new build of the same version. Version
+                  constraints apply to Version; of two equal versions the higher build
+                  is newer.
+                format: int32
+                minimum: 0
+                type: integer
+              conflicts:
+                description: |-
+                  Conflicts lists package names or capabilities that must not be
+                  installed alongside this package.
+                items:
+                  type: string
+                type: array
+              crds:
+                description: CRDs lists the names of CustomResourceDefinitions this
+                  package owns.
+                items:
+                  type: string
+                type: array
+              images:
+                description: |-
+                  Images are the container images the package runs, each pinned by
+                  digest: registry/repository:tag@sha256:..., including those an
+                  operator in the package deploys on its own. A signed index covers
+                  them like the charts, and kubepkg bundle copies them for
+                  air-gapped clusters.
+                items:
+                  type: string
+                type: array
+              permissions:
+                description: |-
+                  Permissions declares what the package needs in the cluster. It is shown
+                  in plans so the operator of the cluster sees it before installing; it is
+                  not enforced yet.
+                properties:
+                  clusterWide:
+                    description: ClusterWide is true when the package needs cluster-scoped
+                      access.
+                    type: boolean
+                  rules:
+                    description: Rules are the RBAC rules the package's components
+                      need.
+                    items:
+                      description: |-
+                        PolicyRule holds information that describes a policy rule, but does not contain information
+                        about who the rule applies to or which namespace the rule applies to.
+                      properties:
+                        apiGroups:
+                          description: |-
+                            apiGroups is the name of the APIGroup that contains the resources.  If multiple API groups are specified, any action requested against one of
+                            the enumerated resources in any API group will be allowed. "" represents the core API group and "*" represents all API groups.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        nonResourceURLs:
+                          description: |-
+                            nonResourceURLs is a set of partial urls that a user should have access to.  *s are allowed, but only as the full, final step in the path
+                            Since non-resource URLs are not namespaced, this field is only applicable for ClusterRoles referenced from a ClusterRoleBinding.
+                            Rules can either apply to API resources (such as "pods" or "secrets") or non-resource URL paths (such as "/api"),  but not both.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        resourceNames:
+                          description: resourceNames is an optional white list of
+                            names that the rule applies to.  An empty set means that
+                            everything is allowed.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        resources:
+                          description: resources is a list of resources this rule
+                            applies to. '*' represents all resources.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        verbs:
+                          description: verbs is a list of Verbs that apply to ALL
+                            the ResourceKinds contained in this rule. '*' represents
+                            all verbs.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - verbs
+                      type: object
+                    type: array
+                type: object
+              provides:
+                description: |-
+                  Provides lists capabilities this package offers, e.g. "ingress" or
+                  "api:cert-manager.io/v1". The package name is always provided implicitly.
+                items:
+                  type: string
+                type: array
+              rollback:
+                description: Rollback describes whether going back from this version
+                  is safe.
+                properties:
+                  safe:
+                    description: |-
+                      Safe is true when rolling back from this version to the previous one
+                      does not lose data. Only then does a failed upgrade roll back
+                      automatically.
+                    type: boolean
+                type: object
+              sourceRef:
+                description: SourceRef is the source reference for the package source
+                  charts
+                properties:
+                  kind:
+                    description: |-
+                      Kind of the source reference. GitRepository and OCIRepository are Flux
+                      sources and need the flux backend; OCIArtifact is fetched by kubepkg.
+                    enum:
+                    - GitRepository
+                    - OCIRepository
+                    - OCIArtifact
+                    type: string
+                  name:
+                    description: Name of the source reference (Flux kinds)
+                    type: string
+                  namespace:
+                    description: Namespace of the source reference (Flux kinds)
+                    type: string
+                  path:
+                    description: |-
+                      Path is the base path where packages are located in the source.
+                      For GitRepository, defaults to "packages" if not specified.
+                      For OCIRepository and OCIArtifact, defaults to empty string (root) if not specified.
+                    type: string
+                  url:
+                    description: |-
+                      URL of an OCI artifact holding the package tree, e.g.
+                      oci://ghcr.io/example/packages:1.0.0 (OCIArtifact only).
+                    type: string
+                required:
+                - kind
+                type: object
+                x-kubernetes-validations:
+                - message: OCIArtifact needs url; GitRepository and OCIRepository
+                    need name and namespace
+                  rule: 'self.kind == ''OCIArtifact'' ? has(self.url) : (has(self.name)
+                    && has(self.namespace))'
+              variants:
+                description: |-
+                  Variants is a list of package source variants
+                  Each variant defines components, applications, dependencies, and libraries for a specific configuration
+                items:
+                  description: Variant defines a single variant configuration
+                  properties:
+                    components:
+                      description: Components is a list of Helm releases to be installed
+                        as part of this variant
+                      items:
+                        description: Component defines a single Helm release component
+                          within a package source
+                        properties:
+                          chart:
+                            description: |-
+                              Chart is a chart published in a Helm repository, used as is. A
+                              package made only of such components needs no package tree.
+                            properties:
+                              digest:
+                                description: |-
+                                  Digest is the sha256 of the chart archive, sha256:<hex>. When set, a
+                                  chart that does not match is refused, so a repository that changes a
+                                  published version cannot change what gets installed.
+                                pattern: ^sha256:[a-f0-9]{64}$
+                                type: string
+                              name:
+                                description: Name is the chart name.
+                                type: string
+                              repository:
+                                description: |-
+                                  Repository is an HTTP(S) Helm repository URL, or an oci:// path the
+                                  chart is pushed under, e.g. oci://ghcr.io/example/charts.
+                                pattern: ^(https?|oci)://
+                                type: string
+                              version:
+                                description: |-
+                                  Version is the exact chart version. Ranges are not accepted: a
+                                  package version must always install the same chart.
+                                type: string
+                            required:
+                            - name
+                            - repository
+                            - version
+                            type: object
+                          install:
+                            description: Install defines installation parameters for
+                              this component
+                            properties:
+                              dependsOn:
+                                description: DependsOn is a list of component names
+                                  that must be installed before this component
+                                items:
+                                  type: string
+                                type: array
+                              healthCheckExprs:
+                                description: |-
+                                  HealthCheckExprs are CEL health expressions for the custom resource(s)
+                                  this component renders, so the component reports Ready only when the
+                                  resource is actually healthy.
+                                items:
+                                  description: |-
+                                    HealthCheck tells when a custom resource a component renders is
+                                    healthy, with CEL expressions over the object (flux backend).
+                                  properties:
+                                    apiVersion:
+                                      description: APIVersion of the custom resource.
+                                      type: string
+                                    current:
+                                      description: Current is true when the resource
+                                        is healthy.
+                                      type: string
+                                    failed:
+                                      description: Failed is true when the resource
+                                        has failed.
+                                      type: string
+                                    inProgress:
+                                      description: InProgress is true while the resource
+                                        is being reconciled.
+                                      type: string
+                                    kind:
+                                      description: Kind of the custom resource.
+                                      type: string
+                                  required:
+                                  - apiVersion
+                                  - current
+                                  - kind
+                                  type: object
+                                type: array
+                              namespace:
+                                description: Namespace is the Kubernetes namespace
+                                  where the release will be installed
+                                type: string
+                              phase:
+                                description: |-
+                                  Phase PreUpgrade makes the component a hook: it runs only when the
+                                  package moves to another version, before every other component,
+                                  with values kubepkg.fromVersion and kubepkg.toVersion, typically a
+                                  Job that migrates data. A hook that fails stops the upgrade before
+                                  anything else changes; it is uninstalled once the upgrade succeeds,
+                                  so the next upgrade runs it afresh.
+                                enum:
+                                - PreUpgrade
+                                type: string
+                              privileged:
+                                description: Privileged indicates whether this release
+                                  requires privileged access
+                                type: boolean
+                              readyWhen:
+                                description: |-
+                                  ReadyWhen lists object conditions that must hold before the
+                                  component counts as ready, for resources whose own readiness Helm
+                                  cannot see, such as an operator's custom resource reporting
+                                  Available. Every backend honours it; not meeting it within the
+                                  upgrade timeout fails the revision.
+                                items:
+                                  description: ReadyCondition is a condition an object
+                                    must report.
+                                  properties:
+                                    apiVersion:
+                                      type: string
+                                    condition:
+                                      description: Condition is the type in status.conditions,
+                                        e.g. Available.
+                                      type: string
+                                    kind:
+                                      type: string
+                                    name:
+                                      type: string
+                                    namespace:
+                                      description: |-
+                                        Namespace defaults to the component's install namespace and is
+                                        ignored for cluster-scoped kinds.
+                                      type: string
+                                    status:
+                                      description: Status is the wanted status of
+                                        the condition. Default "True".
+                                      type: string
+                                  required:
+                                  - apiVersion
+                                  - condition
+                                  - kind
+                                  - name
+                                  type: object
+                                type: array
+                              releaseName:
+                                description: |-
+                                  ReleaseName is the name of the HelmRelease resource that will be created
+                                  If not specified, defaults to the component Name field
+                                type: string
+                              upgradeCRDs:
+                                description: |-
+                                  UpgradeCRDs controls how CRDs from the chart's crds/ directory are
+                                  handled on upgrades. Empty keeps the backend default (Skip).
+                                  Use "CreateReplace" for operators that evolve their CRD set between
+                                  versions. Warning: CreateReplace overwrites CRDs and may cause data
+                                  loss if upstream drops fields from a CRD with live objects.
+                                enum:
+                                - Skip
+                                - Create
+                                - CreateReplace
+                                type: string
+                              waitStrategy:
+                                description: WaitStrategy is one of poller|legacy
+                                  (flux backend).
+                                enum:
+                                - poller
+                                - legacy
+                                type: string
+                            type: object
+                          libraries:
+                            description: |-
+                              Libraries is a list of library names that this component depends on
+                              These libraries must be defined at the variant level
+                            items:
+                              type: string
+                            type: array
+                          name:
+                            description: Name is the unique identifier for this component
+                              within the package source
+                            type: string
+                          path:
+                            description: Path is the chart directory inside the package
+                              tree.
+                            type: string
+                          valuesFiles:
+                            description: ValuesFiles is a list of values file names
+                              to use
+                            items:
+                              type: string
+                            type: array
+                        required:
+                        - name
+                        type: object
+                        x-kubernetes-validations:
+                        - message: set exactly one of path and chart
+                          rule: has(self.path) != has(self.chart)
+                        - message: libraries and valuesFiles apply to charts in the
+                            package tree only
+                          rule: '!has(self.chart) || (!has(self.libraries) && !has(self.valuesFiles))'
+                      type: array
+                    dependsOn:
+                      description: |-
+                        DependsOn is a list of package source dependencies
+                        For example: "networking"
+                        Equivalent to Requires entries with only Package set.
+                      items:
+                        type: string
+                      type: array
+                    libraries:
+                      description: Libraries is a list of Helm library charts used
+                        by components in this variant
+                      items:
+                        description: Library defines a Helm library chart
+                        properties:
+                          name:
+                            description: Name is the optional name for library placed
+                              in charts
+                            type: string
+                          path:
+                            description: Path is the path to the library chart directory
+                            type: string
+                        required:
+                        - path
+                        type: object
+                      type: array
+                    name:
+                      description: Name is the unique identifier for this variant
+                      type: string
+                    requires:
+                      description: Requires lists packages or capabilities this variant
+                        needs.
+                      items:
+                        description: Requirement is a dependency on a package or a
+                          capability.
+                        properties:
+                          capability:
+                            description: |-
+                              Capability is a required capability, e.g. "ingress" or
+                              "api:cert-manager.io/v1".
+                            type: string
+                          optional:
+                            description: |-
+                              Optional requirements only order installation: if present, they must
+                              be ready first; if absent, the package proceeds.
+                            type: boolean
+                          package:
+                            description: Package is the name of a required package.
+                            type: string
+                          version:
+                            description: |-
+                              Version is a semver constraint on the required package, e.g. ">=1.2 <2".
+                              Only meaningful with Package.
+                            type: string
+                        type: object
+                        x-kubernetes-validations:
+                        - message: exactly one of package or capability must be set
+                          rule: has(self.package) != has(self.capability)
+                      type: array
+                  required:
+                  - name
+                  type: object
+                type: array
+              version:
+                description: |-
+                  Version is the semantic version of this package.
+                  Empty means unversioned (see UnversionedVersion).
+                type: string
+            type: object
+          status:
+            description: PackageSourceStatus defines the observed state of PackageSource
+            properties:
+              conditions:
+                description: Conditions represents the latest available observations
+                  of a PackageSource's state
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
             type: object
         type: object
     served: true
