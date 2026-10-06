@@ -131,6 +131,12 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 	// The package decides about rollbacks for all its components together;
 	// a per-release rollback here would leave the package half reverted.
 	up.RollbackOnFailure = false
+	// The package owns what its charts contain. Operators often rewrite
+	// fields of their own CRDs and resources; server-side apply would then
+	// refuse every upgrade with a field manager conflict, where Helm 3's
+	// client-side apply simply wrote the chart's values. Keep those
+	// semantics: the chart's values win.
+	up.ForceConflicts = true
 	if c.UpgradeCRDs == "Create" || c.UpgradeCRDs == "CreateReplace" {
 		if err := applyCRDs(ctx, b.getter, ch); err != nil {
 			return backend.State{}, fmt.Errorf("upgrade CRDs of %s: %w", c.Key(), err)
@@ -195,6 +201,7 @@ func (b *Backend) Rollback(ctx context.Context, c backend.Component, toRevision 
 	rb.WaitStrategy = kube.StatusWatcherStrategy
 	rb.Timeout = timeout(c)
 	rb.MaxHistory = b.MaxHistory
+	rb.ForceConflicts = true // see Apply
 	if err := rb.Run(c.ReleaseName); err != nil {
 		return b.stateAfter(ctx, c, fmt.Errorf("roll back %s to revision %d: %w", c.Key(), toRevision, err))
 	}
