@@ -24,12 +24,15 @@ import (
 
 // Condition reasons a Package reports on its Ready condition.
 const (
-	ReasonVersionMismatch       = "VersionMismatch"
-	ReasonRequirementsNotMet    = "RequirementsNotMet"
-	ReasonConflict              = "Conflict"
-	ReasonCRDOwnershipConflict  = "CRDOwnershipConflict"
-	ReasonUpgradeFailed         = "UpgradeFailed"
-	ReasonUpgradeRolledBack     = "UpgradeRolledBack"
+	ReasonVersionMismatch      = "VersionMismatch"
+	ReasonRequirementsNotMet   = "RequirementsNotMet"
+	ReasonConflict             = "Conflict"
+	ReasonCRDOwnershipConflict = "CRDOwnershipConflict"
+	ReasonUpgradeFailed        = "UpgradeFailed"
+	ReasonUpgradeRolledBack    = "UpgradeRolledBack"
+	// ReasonRolledBack: the package runs an earlier revision someone asked
+	// for, and holds it until the Package changes.
+	ReasonRolledBack            = "RolledBack"
 	ReasonPackageSourceNotFound = "PackageSourceNotFound"
 	ReasonVariantNotFound       = "VariantNotFound"
 	ReasonApplied               = "ReconciliationSucceeded"

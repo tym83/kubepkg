@@ -214,6 +214,12 @@ func (r *PackageReconciler) reportHeld(pkg *v1alpha1.Package, rev *v1alpha1.Pack
 			rev.Status.Message = fmt.Sprintf("restored revision %d", rev.Spec.RestoredFrom)
 		}
 		pkg.Status.Version = rev.Spec.Version
+		if rev.Annotations[AnnotationRollbackRequested] == "true" && rev.Status.Phase == v1alpha1.PhaseApplied {
+			// Someone asked for this state and it runs: the package is
+			// healthy, it just does not follow its spec until told to.
+			setReady(pkg, metav1.ConditionTrue, v1alpha1.ReasonRolledBack, rev.Status.Message+"; change the Package or set "+AnnotationRetry+" to follow it again")
+			return
+		}
 		setReady(pkg, metav1.ConditionFalse, reason, rev.Status.Message+"; change the Package or set "+AnnotationRetry+" to try again")
 		return
 	}
@@ -428,7 +434,7 @@ func (r *PackageReconciler) fail(ctx context.Context, pkg *v1alpha1.Package, rev
 		setReady(pkg, metav1.ConditionFalse, v1alpha1.ReasonUpgradeFailed, fmt.Sprintf("%s; rolling back failed too: %v", msg, err))
 		return ctrl.Result{}, nil
 	}
-	restored, err := r.recordRestored(ctx, pkg, prev, d.digest, *revs, fmt.Sprintf("revision %d failed (%s), restored revision %d", rev.Spec.Revision, msg, prev.Spec.Revision))
+	restored, err := r.recordRestored(ctx, pkg, prev, d.digest, *revs, false, fmt.Sprintf("revision %d failed (%s), restored revision %d", rev.Spec.Revision, msg, prev.Spec.Revision))
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -472,7 +478,7 @@ func (r *PackageReconciler) restoreComponents(ctx context.Context, prev *v1alpha
 
 // recordRestored writes a revision that re-applies prev. It carries the
 // current desired digest so the operator does not immediately upgrade again.
-func (r *PackageReconciler) recordRestored(ctx context.Context, pkg *v1alpha1.Package, prev *v1alpha1.PackageRevision, digest string, revs []v1alpha1.PackageRevision, msg string) (*v1alpha1.PackageRevision, error) {
+func (r *PackageReconciler) recordRestored(ctx context.Context, pkg *v1alpha1.Package, prev *v1alpha1.PackageRevision, digest string, revs []v1alpha1.PackageRevision, requested bool, msg string) (*v1alpha1.PackageRevision, error) {
 	n := lastOf(revs).Spec.Revision + 1
 	restored := &v1alpha1.PackageRevision{
 		ObjectMeta: metav1.ObjectMeta{
@@ -484,6 +490,9 @@ func (r *PackageReconciler) recordRestored(ctx context.Context, pkg *v1alpha1.Pa
 	}
 	restored.Spec.Revision = n
 	restored.Spec.RestoredFrom = prev.Spec.Revision
+	if requested {
+		restored.Annotations[AnnotationRollbackRequested] = "true"
+	}
 	if err := controllerutil.SetControllerReference(pkg, restored, r.Scheme()); err != nil {
 		return nil, err
 	}
@@ -553,7 +562,7 @@ func (r *PackageReconciler) rollbackTo(ctx context.Context, pkg *v1alpha1.Packag
 		setReady(pkg, metav1.ConditionFalse, "RollbackFailed", err.Error())
 		return ctrl.Result{}, clear()
 	}
-	restored, err := r.recordRestored(ctx, pkg, target, d.digest, *revs, fmt.Sprintf("rolled back to revision %d on request", target.Spec.Revision))
+	restored, err := r.recordRestored(ctx, pkg, target, d.digest, *revs, true, fmt.Sprintf("rolled back to revision %d on request", target.Spec.Revision))
 	if err != nil {
 		return ctrl.Result{}, err
 	}

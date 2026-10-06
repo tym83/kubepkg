@@ -93,8 +93,9 @@ When a package is not ready, its `Ready` condition says why:
 | `Conflict` | an installed package conflicts with this one | remove one of them |
 | `CRDOwnershipConflict` | another package owns a CRD this one ships | remove the other package, or drop the CRD from one of them |
 | `VariantNotFound` | the package has no such variant | fix `spec.variant` |
-| `UpgradeRolledBack` | the last upgrade failed and the package went back to the previous revision | read the message, fix, apply again |
-| `UpgradeFailed` | the last upgrade failed and could not be rolled back | fix forward: a corrected version or values |
+| `RolledBack` (ready) | the package runs an earlier revision you asked for with `kubepkg rollback` | change the Package, or set `kubepkg.dev/retry`, when you want it to follow its spec again |
+| `UpgradeRolledBack` | the last upgrade failed and the package went back to the previous revision | read the message, fix, then change the Package or set `kubepkg.dev/retry` to try again |
+| `UpgradeFailed` | the last upgrade failed and could not be rolled back | fix forward: a corrected version or values, or set `kubepkg.dev/retry` to try the same again |
 
 ## Rolling back by hand
 
@@ -104,7 +105,7 @@ kubepkg rollback cert-manager            # to the revision before the current on
 kubepkg rollback cert-manager --to 1     # to a given revision
 ```
 
-A rollback re-applies the recorded state of that revision as a new revision: the same charts and the same values. The package then stays at that state, even though the Package object may still ask for something else. It moves forward again on the next change to what the Package resolves to: an edit to the Package, or a newer matching version in a repository. If you want to stay where you rolled back to, make the Package say so: pin the version, or revert the values.
+A rollback re-applies the recorded state of that revision as a new revision: the same charts and the same values. Once that state runs, the package is ready with the reason `RolledBack`. It holds that state even though the Package object may still ask for something else. It moves forward again on the next change to what the Package resolves to: an edit to the Package, a newer matching version in a repository, or the annotation `kubepkg.dev/retry` set to a new value. If you want to stay where you rolled back to, make the Package say so: pin the version, or revert the values.
 
 ![kubepkg rollback](../img/rollback.svg)
 

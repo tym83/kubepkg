@@ -422,6 +422,9 @@ func TestRollbackAnnotationAndHold(t *testing.T) {
 	if e.be.chartOf("ns-app/app") != "app@1.0.0" {
 		t.Fatal("the operator undid a manual rollback")
 	}
+	if c := meta.FindStatusCondition(e.pkg("app").Status.Conditions, "Ready"); c == nil || c.Status != metav1.ConditionTrue || c.Reason != v1alpha1.ReasonRolledBack {
+		t.Fatalf("a requested rollback that runs is ready: %+v", c)
+	}
 	// A real change to the desired state releases the hold.
 	e.setVersion("app", "1.2.0", true)
 	e.reconcile("app")
