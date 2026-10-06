@@ -40,6 +40,9 @@ type Component struct {
 	ReleaseName string
 	Namespace   string
 
+	// Adopt takes over objects the release would create that exist but
+	// were installed another way, and a release of the same name.
+	Adopt bool
 	// ChartDir is a composed chart on local disk (helm backend).
 	ChartDir string
 	// Chart is a published chart, for backends that hand charts to another

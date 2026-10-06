@@ -261,11 +261,13 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 				return nil, fmt.Errorf("values of component %s: %w", c.Name, err)
 			}
 		}
+		ns, rel := placement(pkg, c)
 		bc := backend.Component{
 			Package:          pkg.Name,
 			Name:             c.Name,
-			ReleaseName:      releaseName(c),
-			Namespace:        c.Install.Namespace,
+			ReleaseName:      rel,
+			Namespace:        ns,
+			Adopt:            pkg.Annotations[AnnotationAdopt] == "true",
 			Values:           values,
 			Labels:           map[string]string{v1alpha1.LabelPackage: pkg.Name},
 			UpgradeCRDs:      c.Install.UpgradeCRDs,
@@ -287,7 +289,8 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 			if !ok {
 				return nil, fmt.Errorf("component %s not found in variant for dependency %s", dep, c.Name)
 			}
-			bc.DependsOn = append(bc.DependsOn, dc.Install.Namespace+"/"+releaseName(dc))
+			dns, drel := placement(pkg, dc)
+			bc.DependsOn = append(bc.DependsOn, dns+"/"+drel)
 		}
 		bc.DependsOn = append(bc.DependsOn, depReleases...)
 
@@ -319,6 +322,21 @@ func (r *PackageReconciler) buildDesired(ctx context.Context, pkg *v1alpha1.Pack
 		}
 	}
 	return d, nil
+}
+
+// placement is where a component goes: the package's install settings,
+// unless the Package overrides them.
+func placement(pkg *v1alpha1.Package, c v1alpha1.Component) (namespace, release string) {
+	namespace, release = c.Install.Namespace, releaseName(c)
+	if o, ok := pkg.Spec.Components[c.Name]; ok {
+		if o.Namespace != "" {
+			namespace = o.Namespace
+		}
+		if o.ReleaseName != "" {
+			release = o.ReleaseName
+		}
+	}
+	return namespace, release
 }
 
 // topoOrder sorts components so dependencies come first; ties keep the

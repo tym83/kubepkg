@@ -46,6 +46,7 @@ jobs:
           - {suite: argo, backend: argo}
           - {suite: kubevirt, backend: helm}
           - {suite: bundle, backend: helm}
+          - {suite: adopt, backend: helm}
     name: e2e (${{ matrix.suite }}, ${{ matrix.backend }})
     steps:
       - uses: actions/checkout@v4

@@ -141,6 +141,15 @@ type PackageComponent struct {
 	// These values will be merged with the default values from the PackageSource
 	// +optional
 	Values *apiextensionsv1.JSON `json:"values,omitempty"`
+
+	// ReleaseName overrides the component's release name, e.g. to take
+	// over a release installed before under another name.
+	// +optional
+	ReleaseName string `json:"releaseName,omitempty"`
+
+	// Namespace overrides the namespace the component is installed into.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // PackageStatus defines the observed state of Package

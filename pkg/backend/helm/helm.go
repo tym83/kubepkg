@@ -30,6 +30,7 @@ import (
 	"helm.sh/helm/v4/pkg/chart/loader"
 	"helm.sh/helm/v4/pkg/kube"
 	"helm.sh/helm/v4/pkg/release"
+	releasev1 "helm.sh/helm/v4/pkg/release/v1"
 	"helm.sh/helm/v4/pkg/storage/driver"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -114,6 +115,7 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 		// A failed first install is uninstalled by the operator when the
 		// package rolls back, so Helm must not uninstall it on its own.
 		in.RollbackOnFailure = false
+		in.TakeOwnership = c.Adopt
 		if _, err := in.RunWithContext(ctx, ch, values); err != nil {
 			return b.stateAfter(ctx, c, fmt.Errorf("install %s: %w", c.Key(), err))
 		}
@@ -137,6 +139,7 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 	// client-side apply simply wrote the chart's values. Keep those
 	// semantics: the chart's values win.
 	up.ForceConflicts = true
+	up.TakeOwnership = c.Adopt
 	if c.UpgradeCRDs == "Create" || c.UpgradeCRDs == "CreateReplace" {
 		if err := applyCRDs(ctx, b.getter, ch); err != nil {
 			return backend.State{}, fmt.Errorf("upgrade CRDs of %s: %w", c.Key(), err)
@@ -225,3 +228,43 @@ func (b *Backend) Uninstall(_ context.Context, c backend.Component) error {
 }
 
 var _ backend.Backend = (*Backend)(nil)
+
+// ReleaseInfo is what an existing Helm release holds.
+type ReleaseInfo struct {
+	Chart, ChartVersion, AppVersion string
+	Revision                        int
+	Status                          string
+	// Values are the values the release was given, not the chart's
+	// defaults.
+	Values map[string]any
+	// ManagedBy is the package label, empty for a release kubepkg did not
+	// install.
+	ManagedBy string
+}
+
+// Release reads the Helm release namespace/name; nil when there is none.
+func (b *Backend) Release(namespace, name string) (*ReleaseInfo, error) {
+	cfg, err := b.config(namespace)
+	if err != nil {
+		return nil, err
+	}
+	rel, err := action.NewGet(cfg).Run(name)
+	if errors.Is(err, driver.ErrReleaseNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("release %s/%s: %w", namespace, name, err)
+	}
+	acc, err := release.NewAccessor(rel)
+	if err != nil {
+		return nil, err
+	}
+	info := &ReleaseInfo{Revision: acc.Version(), Status: acc.Status(), ManagedBy: acc.Labels()["kubepkg.dev/package"]}
+	if r, ok := rel.(*releasev1.Release); ok && r.Chart != nil && r.Chart.Metadata != nil {
+		info.Chart, info.ChartVersion, info.AppVersion = r.Chart.Metadata.Name, r.Chart.Metadata.Version, r.Chart.Metadata.AppVersion
+	}
+	if info.Values, err = action.NewGetValues(cfg).Run(name); err != nil {
+		return nil, fmt.Errorf("values of %s/%s: %w", namespace, name, err)
+	}
+	return info, nil
+}

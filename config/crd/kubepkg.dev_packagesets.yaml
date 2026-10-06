@@ -118,6 +118,15 @@ spec:
                                   Enabled indicates whether this component should be installed
                                   If false, the component will be disabled even if it's defined in the PackageSource
                                 type: boolean
+                              namespace:
+                                description: Namespace overrides the namespace the
+                                  component is installed into.
+                                type: string
+                              releaseName:
+                                description: |-
+                                  ReleaseName overrides the component's release name, e.g. to take
+                                  over a release installed before under another name.
+                                type: string
                               values:
                                 description: |-
                                   Values contains Helm chart values as a JSON object
