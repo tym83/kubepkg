@@ -360,6 +360,14 @@ The operator keeps every index loaded. A `Package` with no hand-written `Package
 
 A distribution adds index transports by URL scheme (`http` and `https` are built in) and a policy that admits indexes and versions — signature checks, allowed registries — through `operator.Options`.
 
+## Air-gapped clusters
+
+A package lists the images it runs in `images`, each pinned by digest, so a signed index covers images as it covers charts. Pins live in the recipe: `init` writes them, `kubepkg images` prints them for an existing recipe, and `validate` fails when a chart runs an image the list does not pin.
+
+`kubepkg bundle create` writes one file with the chosen packages and their requirements: the repository files as fetched (index, signatures, roots), chart archives, package trees and images. `kubepkg bundle import` checks the bundle with keys given on the air-gapped side, never keys from the bundle, using the cluster's own checks (signatures, root chain, expiry), then checks every chart, tree and image against the signed packages, copies them into a mirror registry and writes the repositories' files for serving. Images found in charts rather than pinned by a repository are refused unless `--allow-unpinned-images`.
+
+The mirror keeps each location under its own path, `<mirror>/<host>/<path>`, with the same digests. The operator's `--mirror` fetches every chart and tree from there, without changing revisions; `--node-config` writes containerd and Talos settings that send image pulls there.
+
 ## Several clusters
 
 A hub installs packages into member clusters, each of which runs kubepkg itself and keeps its own revisions and rollbacks. The hub knows its members as `Cluster` resources, which point at a kubeconfig in a Secret and carry labels, and says what goes where with `PackageSet`s:
