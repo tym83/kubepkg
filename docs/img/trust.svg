@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="933" height="620" viewBox="0 0 933 620" role="img" aria-label="kubepkg — trust">
+<rect width="933" height="620" rx="8" fill="#1e1f29"/>
+<path d="M0 8a8 8 0 0 1 8-8h917a8 8 0 0 1 8 8v22h-933z" fill="#2a2c3a"/>
+<circle cx="18" cy="15" r="6" fill="#ff5f57"/><circle cx="38" cy="15" r="6" fill="#febc2e"/><circle cx="58" cy="15" r="6" fill="#28c840"/>
+<text x="466.5" y="19" fill="#8b8fa3" font-family="-apple-system, Segoe UI, sans-serif" font-size="12" text-anchor="middle">kubepkg — trust</text>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" xml:space="preserve">
+<text x="16" y="59"><tspan fill="#7ee787">$</tspan><tspan fill="#ffffff" font-weight="bold"> kubepkg repo keygen root-a &amp;&amp; kubepkg repo keygen root-b &amp;&amp; kubepkg repo keygen ci</tspan></text>
+<text x="16" y="77" fill="#d6d8e0">wrote root-a.key (private) and root-a.pub</text>
+<text x="16" y="95" fill="#d6d8e0">wrote root-b.key (private) and root-b.pub</text>
+<text x="16" y="113" fill="#d6d8e0">wrote ci.key (private) and ci.pub</text>
+<text x="16" y="131"><tspan fill="#7ee787">$</tspan><tspan fill="#ffffff" font-weight="bold"> kubepkg trust root new --root-key root-a.pub --root-key root-b.pub --root-threshold 2 --index-key ci.pub --…</tspan></text>
+<text x="16" y="149" fill="#d6d8e0">wrote root.yaml: root version 1, unsigned; sign it with kubepkg trust sign</text>
+<text x="16" y="167"><tspan fill="#7ee787">$</tspan><tspan fill="#ffffff" font-weight="bold"> kubepkg trust sign root.yaml --key root-a.key</tspan></text>
+<text x="16" y="185" fill="#d6d8e0">root version 1 now has 1 signatures</text>
+<text x="16" y="203"><tspan fill="#7ee787">$</tspan><tspan fill="#ffffff" font-weight="bold"> kubepkg trust sign root.yaml --key root-b.key</tspan></text>
+<text x="16" y="221" fill="#d6d8e0">root version 1 now has 2 signatures</text>
+<text x="16" y="239"><tspan fill="#7ee787">$</tspan><tspan fill="#ffffff" font-weight="bold"> sed -n 1,20p root.yaml</tspan></text>
+<text x="16" y="257" fill="#d6d8e0">signatures:</text>
+<text x="16" y="275" fill="#d6d8e0">- keyid: d886351fad06ec2cc075672634154f02fe6bd555a795ff1eb9f70e1a5d5c1150</text>
+<text x="16" y="293" fill="#d6d8e0">  sig: zEVohLjDlrOAmlVBQDiZCpyIfWyM/oYtrYokziZEmhn/qCewMcdK0U7t6FY7hDLoE8wjB8fdIJUh5HJ7/wV2BQ==</text>
+<text x="16" y="311" fill="#d6d8e0">- keyid: 05c9a680eb648bb76246e62feab1d149fe20361233a260af15f301d5b34ba34a</text>
+<text x="16" y="329" fill="#d6d8e0">  sig: Sc5kkMcrfMF7yFOITJeT5WCiTZJPe9LIomvCM+KkOg+3lxGy+uytqOqusKdEcGEYNVA1X3/Ff9soZsSjvq8lAg==</text>
+<text x="16" y="347" fill="#d6d8e0">signed:</text>
+<text x="16" y="365" fill="#d6d8e0">  expires: "2027-10-06T02:38:19Z"</text>
+<text x="16" y="383" fill="#d6d8e0">  keys:</text>
+<text x="16" y="401" fill="#d6d8e0">    05c9a680eb648bb76246e62feab1d149fe20361233a260af15f301d5b34ba34a: |</text>
+<text x="16" y="419" fill="#d6d8e0">      -----BEGIN PUBLIC KEY-----</text>
+<text x="16" y="437" fill="#d6d8e0">      MCowBQYDK2VwAyEA/2h6XX+si9NblsTXmhFoBwpAU4IghqM5NRed11KSDa4=</text>
+<text x="16" y="455" fill="#d6d8e0">      -----END PUBLIC KEY-----</text>
+<text x="16" y="473" fill="#d6d8e0">    495fa0a37e72c91b847b3d6783cdc384284c87d6c4d288c1964e7a43273cc041: |</text>
+<text x="16" y="491" fill="#d6d8e0">      -----BEGIN PUBLIC KEY-----</text>
+<text x="16" y="509" fill="#d6d8e0">      MCowBQYDK2VwAyEAQW867vP9utc+2KcTfpFwxUZw0ROUor8sDZO207iEu+4=</text>
+<text x="16" y="527" fill="#d6d8e0">      -----END PUBLIC KEY-----</text>
+<text x="16" y="545" fill="#d6d8e0">    d886351fad06ec2cc075672634154f02fe6bd555a795ff1eb9f70e1a5d5c1150: |</text>
+<text x="16" y="563" fill="#d6d8e0">      -----BEGIN PUBLIC KEY-----</text>
+<text x="16" y="581" fill="#d6d8e0">      MCowBQYDK2VwAyEAqU+vklhwKltVKLo3n/RJbRvZz1p/yqjUBymqdJpVe+c=</text>
+<text x="16" y="599" fill="#d6d8e0">      -----END PUBLIC KEY-----</text>
+</g>
+</svg>

@@ -1,0 +1,3 @@
+$ kubepkg set list
+SET        CLUSTER  READY  STATUS
+edge-base  edge     1/1    -

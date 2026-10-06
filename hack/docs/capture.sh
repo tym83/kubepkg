@@ -5,9 +5,11 @@
 # what the command printed. hack/docs/term2svg.py draws the screenshots
 # from them.
 #
-#   KUBE_CONTEXT   cluster with the kubepkg operator and no packages yet
+#   KUBE_CONTEXT   cluster with the kubepkg operator
 #
-# The cluster keeps what the transcripts installed last; KEEP=0 removes it.
+# Packages and the "main" repository left from an earlier run are removed
+# first, so the transcripts start from a clean cluster. The cluster keeps
+# what the transcripts installed last; KEEP=0 removes it.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -45,6 +47,9 @@ settled() { # package revision: wait until the revision is applied
   done
   ready "$1"
 }
+
+kubectl delete packages.kubepkg.dev --all --wait --timeout 900s >/dev/null
+kubectl delete repositories.kubepkg.dev main --ignore-not-found >/dev/null
 
 curl -fsSL https://raw.githubusercontent.com/tym83/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
 

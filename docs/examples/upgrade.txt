@@ -1,0 +1,6 @@
+$ kubectl patch package cert-manager --type merge -p '{"spec":{"components":{"cert-manager":{"values":{"replicaCount":2}}}}}'
+package.kubepkg.dev/cert-manager patched
+$ kubepkg history cert-manager
+REVISION  VERSION  PHASE       CREATED              NOTE
+1         1.21.2   Superseded  2026-10-06 02:36:08  
+2         1.21.2   Applied     2026-10-06 02:37:57  

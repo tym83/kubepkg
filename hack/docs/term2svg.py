@@ -13,7 +13,7 @@ from xml.sax.saxutils import escape
 MAX_COLS = 110
 FONT = 13
 LINE = 18
-CHAR = 7.83  # advance of a 13px monospace glyph
+CHAR = 8.2  # advance of a 13px monospace glyph, with room for wider fonts
 PAD = 16
 BAR = 30
 
@@ -23,6 +23,12 @@ FG = "#d6d8e0"
 DIM = "#8b8fa3"
 PROMPT = "#7ee787"
 CMD = "#ffffff"
+
+
+def text(s):
+    # Non-breaking spaces keep the columns: renderers collapse runs of
+    # ordinary spaces whatever xml:space says.
+    return escape(s).replace(" ", "\u00a0")
 
 
 def main():
@@ -43,10 +49,10 @@ def main():
         if l.startswith("$ "):
             body.append(
                 f'<text x="{PAD}" y="{y}"><tspan fill="{PROMPT}">$</tspan>'
-                f'<tspan fill="{CMD}" font-weight="bold"> {escape(l[2:])}</tspan></text>'
+                f'<tspan fill="{CMD}" font-weight="bold">{text(" " + l[2:])}</tspan></text>'
             )
         else:
-            body.append(f'<text x="{PAD}" y="{y}" fill="{FG}">{escape(l)}</text>')
+            body.append(f'<text x="{PAD}" y="{y}" fill="{FG}">{text(l)}</text>')
         y += LINE
 
     dots = "".join(

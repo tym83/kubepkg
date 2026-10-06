@@ -1,0 +1,3 @@
+$ kubepkg remove kube-state-metrics --yes
+remove  kube-state-metrics  (requested)
+1 packages removed; the operator uninstalls them

@@ -1,0 +1,9 @@
+$ kubepkg plan virtualization
+ACTION   PACKAGE         FROM  TO              REPOSITORY  WHY
+install  cdi             -     1.66.1 build 2  main        required by virtualization 1.0.0
+install  kubevirt        -     1.9.0 build 4   main        required by virtualization 1.0.0
+install  virtualization  -     1.0.0 build 1   main        requested
+  cdi: owns CRDs: cdis.cdi.kubevirt.io
+  cdi: not rollback-safe: a failed upgrade is fixed forward, not rolled back
+  kubevirt: owns CRDs: kubevirts.kubevirt.io
+  kubevirt: not rollback-safe: a failed upgrade is fixed forward, not rolled back

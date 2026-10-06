@@ -1,0 +1,11 @@
+$ kubepkg install cert-manager kube-state-metrics --yes
+ACTION   PACKAGE             FROM  TO              REPOSITORY  WHY
+install  cert-manager        -     1.21.2 build 2  main        requested
+install  kube-state-metrics  -     2.20.0 build 2  main        requested
+  cert-manager: owns CRDs: certificates.cert-manager.io, certificaterequests.cert-manager.io, issuers.cert-manager.io, clusterissuers.cert-manager.io, orders.acme.cert-manager.io, challenges.acme.cert-manager.io
+  cert-manager: not rollback-safe: a failed upgrade is fixed forward, not rolled back
+2 packages requested; follow them with "list"
+$ kubepkg list
+NAME                VERSION  REVISION  READY  REASON
+cert-manager        1.21.2   1         True   ReconciliationSucceeded
+kube-state-metrics  2.20.0   1         True   ReconciliationSucceeded

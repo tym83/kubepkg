@@ -1,0 +1,31 @@
+$ kubepkg repo keygen root-a && kubepkg repo keygen root-b && kubepkg repo keygen ci
+wrote root-a.key (private) and root-a.pub
+wrote root-b.key (private) and root-b.pub
+wrote ci.key (private) and ci.pub
+$ kubepkg trust root new --root-key root-a.pub --root-key root-b.pub --root-threshold 2 --index-key ci.pub --index-threshold 1 --expires 8760h -o root.yaml
+wrote root.yaml: root version 1, unsigned; sign it with kubepkg trust sign
+$ kubepkg trust sign root.yaml --key root-a.key
+root version 1 now has 1 signatures
+$ kubepkg trust sign root.yaml --key root-b.key
+root version 1 now has 2 signatures
+$ sed -n 1,20p root.yaml
+signatures:
+- keyid: d886351fad06ec2cc075672634154f02fe6bd555a795ff1eb9f70e1a5d5c1150
+  sig: zEVohLjDlrOAmlVBQDiZCpyIfWyM/oYtrYokziZEmhn/qCewMcdK0U7t6FY7hDLoE8wjB8fdIJUh5HJ7/wV2BQ==
+- keyid: 05c9a680eb648bb76246e62feab1d149fe20361233a260af15f301d5b34ba34a
+  sig: Sc5kkMcrfMF7yFOITJeT5WCiTZJPe9LIomvCM+KkOg+3lxGy+uytqOqusKdEcGEYNVA1X3/Ff9soZsSjvq8lAg==
+signed:
+  expires: "2027-10-06T02:38:19Z"
+  keys:
+    05c9a680eb648bb76246e62feab1d149fe20361233a260af15f301d5b34ba34a: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEA/2h6XX+si9NblsTXmhFoBwpAU4IghqM5NRed11KSDa4=
+      -----END PUBLIC KEY-----
+    495fa0a37e72c91b847b3d6783cdc384284c87d6c4d288c1964e7a43273cc041: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEAQW867vP9utc+2KcTfpFwxUZw0ROUor8sDZO207iEu+4=
+      -----END PUBLIC KEY-----
+    d886351fad06ec2cc075672634154f02fe6bd555a795ff1eb9f70e1a5d5c1150: |
+      -----BEGIN PUBLIC KEY-----
+      MCowBQYDK2VwAyEAqU+vklhwKltVKLo3n/RJbRvZz1p/yqjUBymqdJpVe+c=
+      -----END PUBLIC KEY-----

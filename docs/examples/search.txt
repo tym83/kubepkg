@@ -1,0 +1,8 @@
+$ kubepkg search
+NAME                LATEST  REPOSITORY  DESCRIPTION
+cdi                 1.66.1  main        Containerized Data Importer, disk images for KubeVirt
+cert-manager        1.21.2  main        X.509 certificate management for Kubernetes
+kube-state-metrics  2.20.0  main        Metrics about the state of Kubernetes objects
+kubevirt            1.9.0   main        Virtual machines on Kubernetes
+metrics-server      0.9.0   main        Resource metrics for autoscaling and kubectl top
+virtualization      1.0.0   main        Virtual machines with disk image import (KubeVirt and CDI)

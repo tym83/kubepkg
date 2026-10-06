@@ -1,0 +1,37 @@
+$ kubepkg init podinfo --chart oci://ghcr.io/stefanprodan/charts/podinfo@6.9.2
+wrote podinfo/recipe.yaml; review it, then run: kubepkg validate podinfo
+$ cat podinfo/recipe.yaml
+apiVersion: kubepkg.dev/v1alpha1
+kind: Recipe
+metadata:
+  name: podinfo
+  annotations:
+    kubepkg.dev/description: "Podinfo Helm chart for Kubernetes"
+    kubepkg.dev/home: https://github.com/stefanprodan/podinfo
+spec:
+  version: 6.9.2
+  build: 1
+  sources:
+    upstream:
+      chart:
+        repository: oci://ghcr.io/stefanprodan/charts
+        name: podinfo
+        version: "6.9.2"
+        digest: sha256:8eacab4365d917867e855bfb4729afdbff28bead3fd9dc01923ab50b26aa4380
+  charts:
+    podinfo:
+      from: [upstream]
+      # values: {}                   # the package's defaults over the upstream ones
+  package:
+    provides: [podinfo]
+    crds: []
+    rollback:
+      safe: false   # true once rolling back to the previous version is known not to lose data
+    variants:
+      - name: default
+        components:
+          - name: podinfo
+            path: podinfo
+            install: {namespace: podinfo}
+$ kubepkg validate podinfo
+podinfo: ok
