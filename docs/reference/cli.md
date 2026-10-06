@@ -9,6 +9,27 @@ Global flags:
       --context string     kubeconfig context (default: the current one)
 ```
 
+## kubepkg adopt
+
+Take what is already installed under kubepkg's management, without reinstalling it
+
+Adopt manages software that was installed before kubepkg, with Helm or by
+applying manifests. It finds the Helm release each component of the
+package would be, by its release name and namespace or where --component
+says, shows what it found, and writes a Package that carries each
+release's current values. The operator then upgrades the releases in
+place to the package's charts and takes over objects that exist without
+a Helm release; nothing is reinstalled. Taking over applies to that first
+revision only.
+
+```text
+kubepkg adopt <package>[@constraint] [flags]
+
+      --component stringArray   where a component's release is, name=namespace/release (repeatable)
+      --variant string          variant to adopt (default: default)
+  -y, --yes                     adopt; without it, only show the plan
+```
+
 ## kubepkg build
 
 Build a package from a recipe and publish it
