@@ -33,6 +33,15 @@ argo:
 # fetches only from there; digests are verified as usual.
 mirror: ""
 
+# Keep pods in package namespaces on the images their packages pin:
+#   off      nothing happens
+#   warn     tags the packages pin are rewritten to their digests; other
+#            images run, with a warning
+#   enforce  the same, and other images are refused; a namespace where
+#            some package pins no images stays at warn
+# The operator issues the webhook's certificate itself.
+imagePolicy: "off"
+
 # Let the operator pull from registries over plain HTTP (test registries only).
 plainHTTP: false
 

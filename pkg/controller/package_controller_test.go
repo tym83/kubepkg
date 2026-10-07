@@ -876,3 +876,35 @@ func TestPrivilegedGoesWhenThePrivilegedComponentLeaves(t *testing.T) {
 		t.Fatal("a level kubepkg did not set was taken away")
 	}
 }
+
+func TestPackageNamespacesGetTheImagePolicy(t *testing.T) {
+	e := newEnv(t)
+	e.r.Profile.ImagePolicy = "enforce"
+	pinned := mkSource("pinned", "1.0.0", true, "app")
+	pinned.Spec.Images = []string{"quay.io/org/app:1@sha256:" + strings.Repeat("a", 64)}
+	pinned.Spec.Variants[0].Components[0].Install.Namespace = "strict"
+	loose := mkSource("loose", "1.0.0", true, "app", "other")
+	loose.Spec.Variants[0].Components[0].Install.Namespace = "mixed"
+	loose.Spec.Variants[0].Components[1].Install.Namespace = "mixed"
+	e.create(pinned, loose, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "pinned"}}, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "loose"}})
+	e.reconcile("pinned")
+	e.reconcile("loose")
+	label := func(name string) string {
+		ns := &corev1.Namespace{}
+		if err := e.c.Get(context.Background(), types.NamespacedName{Name: name}, ns); err != nil {
+			t.Fatal(err)
+		}
+		return ns.Labels["kubepkg.dev/image-policy"]
+	}
+	if label("strict") != "enforce" {
+		t.Fatalf("strict: %q", label("strict"))
+	}
+	if label("mixed") != "warn" {
+		t.Fatalf("a namespace with a package that pins no images: %q", label("mixed"))
+	}
+	e.r.Profile.ImagePolicy = "off"
+	e.reconcile("pinned")
+	if label("strict") != "" {
+		t.Fatal("the label stayed with the policy off")
+	}
+}
