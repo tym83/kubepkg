@@ -157,6 +157,9 @@ func loadStore(ctx context.Context, c client.Client, fetchers repo.Fetchers, war
 			fmt.Fprintf(warn, "warning: repository %s left out: %v\n", r.Name, err)
 			continue
 		}
+		if len(idx.Untrusted) > 0 {
+			fmt.Fprintf(warn, "warning: repository %s has versions their delegation did not sign, left out: %s\n", r.Name, strings.Join(idx.Untrusted, ", "))
+		}
 		if len(idx.Unknown) > 0 {
 			fmt.Fprintf(warn, "warning: repository %s has versions for a newer kubepkg, left out: %s\n", r.Name, strings.Join(idx.Unknown, ", "))
 		}

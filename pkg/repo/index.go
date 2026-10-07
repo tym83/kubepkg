@@ -79,6 +79,9 @@ type Index struct {
 	// Unknown lists versions this kubepkg left out because their specs
 	// have fields it does not know: built for a newer kubepkg.
 	Unknown []string `json:"-"`
+	// Untrusted lists versions left out because their delegation did not
+	// sign them.
+	Untrusted []string `json:"-"`
 }
 
 // Package is every published version of one package.
@@ -98,6 +101,8 @@ type Version struct {
 	// chart in the spec is pinned by digest.
 	Digest string                    `json:"digest"`
 	Spec   v1beta1.PackageSourceSpec `json:"spec"`
+	// Signatures are by keys a root delegates the package to.
+	Signatures []Signature `json:"signatures,omitempty"`
 }
 
 // ChartFetcher resolves chart digests; source.Fetcher implements it.
@@ -166,13 +171,23 @@ func Build(ctx context.Context, dir string, charts ChartFetcher, opts BuildOptio
 		if err != nil {
 			return nil, err
 		}
+		sigs, err := sourceSignatures(s.src.Annotations)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %s: %w", s.file, key, err)
+		}
 		p := idx.Packages[name]
 		if old, ok := published[key]; ok {
 			if old != d {
 				return nil, fmt.Errorf("%s: %s is already published with different content; published versions do not change, give the recipe a new build number", s.file, key)
 			}
+			// Signatures can be added to a published version.
+			for i := range p.Versions {
+				if v := &p.Versions[i]; v.Version == ver && v.Build == s.src.Spec.Build {
+					v.Signatures = mergeSignatures(v.Signatures, sigs)
+				}
+			}
 		} else {
-			p.Versions = append(p.Versions, Version{Version: ver, Build: s.src.Spec.Build, Digest: d, Spec: s.src.Spec})
+			p.Versions = append(p.Versions, Version{Version: ver, Build: s.src.Spec.Build, Digest: d, Spec: s.src.Spec, Signatures: mergeSignatures(nil, sigs)})
 		}
 		if v := s.src.Annotations[AnnotationDescription]; v != "" {
 			p.Description = v
@@ -187,6 +202,19 @@ func Build(ctx context.Context, dir string, charts ChartFetcher, opts BuildOptio
 		idx.Packages[name] = p
 	}
 	return idx, nil
+}
+
+// sourceSignatures reads the signatures a PackageSource carries.
+func sourceSignatures(annotations map[string]string) ([]Signature, error) {
+	raw := annotations[AnnotationSignatures]
+	if raw == "" {
+		return nil, nil
+	}
+	var sigs []Signature
+	if err := json.Unmarshal([]byte(raw), &sigs); err != nil {
+		return nil, fmt.Errorf("annotation %s: %w", AnnotationSignatures, err)
+	}
+	return sigs, nil
 }
 
 // Newer orders versions, then builds, highest first.
