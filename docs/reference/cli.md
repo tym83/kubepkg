@@ -454,12 +454,15 @@ Make version 1 of a root
 ```text
 kubepkg trust root new [flags]
 
-      --expires duration        how long the root stays valid (default 8760h0m0s)
-      --index-key stringArray   public key file allowed to sign the index (repeatable)
-      --index-threshold int     index signatures needed
-  -o, --output string           where to write the unsigned root (default "root.yaml")
-      --root-key stringArray    public key file allowed to sign the root (repeatable)
-      --root-threshold int      root signatures needed
+      --delegate stringArray             NAME=PATTERN[,PATTERN]: hand the packages matching the patterns to the delegation's keys (repeatable)
+      --delegate-key stringArray         NAME=FILE: public key file of a delegation (repeatable)
+      --delegate-threshold stringArray   NAME=N: signatures a delegation needs on each version (default 1)
+      --expires duration                 how long the root stays valid (default 8760h0m0s)
+      --index-key stringArray            public key file allowed to sign the index (repeatable)
+      --index-threshold int              index signatures needed
+  -o, --output string                    where to write the unsigned root (default "root.yaml")
+      --root-key stringArray             public key file allowed to sign the root (repeatable)
+      --root-threshold int               root signatures needed
 ```
 
 ## kubepkg trust root next
@@ -467,30 +470,38 @@ kubepkg trust root new [flags]
 Make the next root version, to rotate keys or change thresholds
 
 Next writes the version after the given root. Roles not given keep their
-keys and thresholds. It must be signed by enough root keys of the current
+keys and thresholds, and delegations not given again are kept. It must be signed by enough root keys of the current
 version and of the new one before clients accept it.
 
 ```text
 kubepkg trust root next <current-root.yaml> [flags]
 
-      --expires duration        how long the root stays valid (default 8760h0m0s)
-      --index-key stringArray   public key file allowed to sign the index (repeatable)
-      --index-threshold int     index signatures needed
-  -o, --output string           where to write the unsigned root (default "root.yaml")
-      --root-key stringArray    public key file allowed to sign the root (repeatable)
-      --root-threshold int      root signatures needed
+      --delegate stringArray             NAME=PATTERN[,PATTERN]: hand the packages matching the patterns to the delegation's keys (repeatable)
+      --delegate-key stringArray         NAME=FILE: public key file of a delegation (repeatable)
+      --delegate-threshold stringArray   NAME=N: signatures a delegation needs on each version (default 1)
+      --expires duration                 how long the root stays valid (default 8760h0m0s)
+      --index-key stringArray            public key file allowed to sign the index (repeatable)
+      --index-threshold int              index signatures needed
+  -o, --output string                    where to write the unsigned root (default "root.yaml")
+      --root-key stringArray             public key file allowed to sign the root (repeatable)
+      --root-threshold int               root signatures needed
+      --undelegate stringArray           remove this delegation (repeatable)
 ```
 
 ## kubepkg trust sign
 
-Add one signature to a root or an index
+Add one signature to a root, an index or package versions
 
 Sign adds the key's signature to a root, inside the file, or to an index,
 in <index>.sig next to it, keeping signatures already there: each signer
 signs with their own key, on their own machine.
 
+Given PackageSources, as kubepkg build writes them, it signs each version
+with a delegated key, in the kubepkg.dev/signatures annotation; repo index
+carries the signatures into the index.
+
 ```text
-kubepkg trust sign <root.yaml|index.yaml> [flags]
+kubepkg trust sign <root.yaml|index.yaml|packagesources.yaml> [flags]
 
       --key string       ed25519 private key file
       --key-env string   environment variable holding the PEM private key

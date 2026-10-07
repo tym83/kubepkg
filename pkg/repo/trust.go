@@ -59,6 +59,10 @@ type Root struct {
 	// Keys are PEM encoded ed25519 public keys by key ID.
 	Keys  map[string]string `json:"keys"`
 	Roles map[string]Role   `json:"roles"`
+	// Delegations hand packages to other keys. A kubepkg that does not
+	// know them cannot reproduce what was signed and refuses the root,
+	// rather than install delegated packages unchecked.
+	Delegations []Delegation `json:"delegations,omitempty"`
 }
 
 // Role is the keys that sign for a role and how many signatures it takes.
@@ -285,6 +289,9 @@ func Bootstrap(sr *SignedRoot, pinned []string, threshold int) (*TrustedRoot, er
 	if err := meets(data, sr.Signatures, sr.Signed.Keys, sr.Signed.Roles[RoleRoot], "root version 1"); err != nil {
 		return nil, err
 	}
+	if err := sr.Signed.checkDelegations(); err != nil {
+		return nil, fmt.Errorf("%w: root version 1: %v", ErrBadSignature, err)
+	}
 	return &TrustedRoot{Root: sr.Signed}, nil
 }
 
@@ -304,12 +311,16 @@ func (t *TrustedRoot) Update(next *SignedRoot) error {
 	if err := meets(data, next.Signatures, next.Signed.Keys, next.Signed.Roles[RoleRoot], fmt.Sprintf("root version %d (by its own keys)", next.Signed.Version)); err != nil {
 		return err
 	}
+	if err := next.Signed.checkDelegations(); err != nil {
+		return fmt.Errorf("%w: root version %d: %v", ErrBadSignature, next.Signed.Version, err)
+	}
 	t.Root = next.Signed
 	return nil
 }
 
 // VerifyIndex checks an index against the index role of the root and the
-// expiry of both.
+// expiry of both, and leaves out versions of delegated packages their
+// delegation did not sign.
 func (t *TrustedRoot) VerifyIndex(index, sigFile []byte, idx *Index, now time.Time) error {
 	if now.After(t.Root.Expires) {
 		return fmt.Errorf("%w: root version %d expired %s", ErrExpired, t.Root.Version, t.Root.Expires.Format(time.RFC3339))
@@ -327,6 +338,7 @@ func (t *TrustedRoot) VerifyIndex(index, sigFile []byte, idx *Index, now time.Ti
 	if now.After(idx.Expires.Time) {
 		return fmt.Errorf("%w: index expired %s; the repository has stopped publishing or is being held back", ErrExpired, idx.Expires.Format(time.RFC3339))
 	}
+	t.Root.applyDelegations(idx)
 	return nil
 }
 

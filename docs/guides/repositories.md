@@ -172,6 +172,28 @@ kubepkg trust sign root.yaml --key dave.key      # new root keys: a threshold of
 
 Clusters follow the chain on their next refresh. Nothing on the clusters changes: they still pin the keys of version 1.
 
+### Delegating packages to teams
+
+With one index key, whoever holds it can publish any version of any package. In a repository that several teams feed, that key usually lives in a shared CI. A root can hand some packages to their own team's keys instead:
+
+```bash
+kubepkg trust root next root.yaml --delegate 'virt=cdi,kubevirt-*' \
+  --delegate-key virt=anna.pub --delegate-key virt=oleg.pub --delegate-threshold virt=2
+```
+
+The root keys sign this version as usual. From then on, a version of `cdi` or of any `kubevirt-*` package is accepted only with two signatures of the `virt` team's keys, whatever key signed the index. The team signs the PackageSources `kubepkg build` wrote, each member on their own machine, and commits them:
+
+```bash
+kubepkg trust sign dist/cdi-1.66.1-2.yaml --key anna.key
+kubepkg trust sign dist/cdi-1.66.1-2.yaml --key oleg.key
+```
+
+The signatures go into the `kubepkg.dev/signatures` annotation. That annotation is outside the spec digest, so a signature can also be added to a version already published. `repo index` copies them into the index. A signature covers the package name, its version, build and spec digest, so it cannot be moved to another build or package.
+
+Clients leave out every version of a delegated package that lacks enough of its team's signatures, and report it: the CLI prints a warning whenever it reads the repository, and the Repository's status message names the version. The rest of the index is used as usual. Patterns follow shell globbing (`kubevirt-*`). Delegations are tried in order, and the first that matches a package applies. `trust root next` keeps the current delegations, replaces one given again with `--delegate`, and removes one with `--undelegate`.
+
+Clients older than 0.5 cannot read a root with delegations and refuse it. Upgrade clusters before you publish the first delegation.
+
 ### Expiry is a feature
 
 Index expiry forces CI to re-sign the index regularly, even when nothing changed. That is the point. A mirror or a man in the middle that keeps serving an old, validly signed index is caught within the expiry period. Choose `--expires` longer than your longest expected outage of the build pipeline: a month is common. The chart's alert `KubepkgRepositoryStale` fires when an index has not changed for longer than `metrics.prometheusRule.indexMaxAge`. Set that below the expiry, and you hear about a stuck pipeline before clusters start refusing its index.

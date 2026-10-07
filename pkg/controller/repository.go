@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -240,6 +241,9 @@ func repositoryMessage(idx *repo.Index) string {
 	msg := fmt.Sprintf("%d packages", len(idx.Packages))
 	if n := len(idx.Unknown); n > 0 {
 		msg += fmt.Sprintf("; %d versions need a newer kubepkg and are left out", n)
+	}
+	if len(idx.Untrusted) > 0 {
+		msg += "; left out, not signed by their delegation: " + strings.Join(idx.Untrusted, ", ")
 	}
 	return msg
 }
