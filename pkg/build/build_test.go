@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -448,5 +449,55 @@ spec:
 	}
 	if names, _ := crdNames(docs); strings.Join(names, ",") != "big.example.org" {
 		t.Fatalf("the CRD is not installed from crds/: %v", names)
+	}
+}
+
+func TestExcludeOnAPublishedChartLoads(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, RecipeFile), `apiVersion: kubepkg.dev/v1beta1
+kind: Recipe
+metadata: {name: gateway}
+spec:
+  version: 1.9.2
+  build: 1
+  sources:
+    chart: {chart: {repository: oci://docker.io/envoyproxy, name: gateway-helm, version: v1.9.2, digest: "sha256:`+strings.Repeat("a", 64)+`"}}
+  charts:
+    gateway:
+      from: [chart]
+      exclude: [{kind: CustomResourceDefinition, name: gateways.gateway.networking.k8s.io}]
+  package:
+    variants: [{name: default, components: [{name: gateway, path: gateway, install: {namespace: gw}}]}]
+`)
+	if _, err := LoadRecipe(dir); err != nil {
+		t.Fatalf("exclude on a chart source is refused: %v", err)
+	}
+}
+
+func TestNoUpgradeCRDsWarningForASubchartSwitchedOff(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "chart/Chart.yaml"), "apiVersion: v2\nname: op\nversion: 1.0.0\ndependencies:\n  - {name: crds, version: 1.0.0, condition: crds.plain}\n")
+		writeFile(t, filepath.Join(dir, "chart/values.yaml"), fmt.Sprintf("crds: {plain: %v}\n", enabled))
+		writeFile(t, filepath.Join(dir, "chart/charts/crds/Chart.yaml"), "apiVersion: v2\nname: crds\nversion: 1.0.0\n")
+		writeFile(t, filepath.Join(dir, "chart/charts/crds/crds/x.yaml"), crdDoc("x.example.org"))
+		writeFile(t, filepath.Join(dir, RecipeFile), `apiVersion: kubepkg.dev/v1beta1
+kind: Recipe
+metadata: {name: op, annotations: {kubepkg.dev/description: op}}
+spec:
+  version: 1.0.0
+  build: 1
+  sources: {chart: {dir: chart}}
+  charts: {op: {from: [chart]}}
+  package:
+    crds: [x.example.org]
+    rollback: {safe: true}
+    variants: [{name: default, components: [{name: op, path: op, install: {namespace: op}}]}]
+`)
+		rep := Validate(context.Background(), dir, opts(t))
+		warned := strings.Contains(strings.Join(rep.Warnings, "\n"), "upgradeCRDs")
+		if warned != enabled {
+			t.Errorf("subchart enabled=%v: warned=%v (%v)", enabled, warned, rep.Warnings)
+		}
 	}
 }

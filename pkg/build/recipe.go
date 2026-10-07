@@ -233,11 +233,6 @@ func (r *Recipe) check() error {
 			}
 		}
 		if len(c.Exclude) > 0 || len(c.Patches) > 0 {
-			for _, f := range c.From {
-				if r.Spec.Sources[f].Chart != nil {
-					return fmt.Errorf("chart %s: exclude and patches apply to wrapped manifests, not to source %s, which is a chart", name, f)
-				}
-			}
 			for _, e := range c.Exclude {
 				if e.Kind == "" && e.Name == "" {
 					return fmt.Errorf("chart %s: an exclude entry with no kind and no name would drop everything", name)

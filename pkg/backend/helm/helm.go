@@ -141,7 +141,7 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 	up.ForceConflicts = true
 	up.TakeOwnership = c.Adopt
 	if c.UpgradeCRDs == "Create" || c.UpgradeCRDs == "CreateReplace" {
-		if err := applyCRDs(ctx, b.getter, ch); err != nil {
+		if err := applyCRDs(ctx, b.getter, ch, values); err != nil {
 			return backend.State{}, fmt.Errorf("upgrade CRDs of %s: %w", c.Key(), err)
 		}
 	}
