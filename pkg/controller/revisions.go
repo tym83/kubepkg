@@ -23,27 +23,27 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 // revisions lists a package's revisions, oldest first.
-func (r *PackageReconciler) revisions(ctx context.Context, pkg string) ([]v1beta1.PackageRevision, error) {
-	var list v1beta1.PackageRevisionList
-	if err := r.List(ctx, &list, client.MatchingLabels{v1beta1.LabelPackage: pkg}); err != nil {
+func (r *PackageReconciler) revisions(ctx context.Context, pkg string) ([]v1.PackageRevision, error) {
+	var list v1.PackageRevisionList
+	if err := r.List(ctx, &list, client.MatchingLabels{v1.LabelPackage: pkg}); err != nil {
 		return nil, err
 	}
 	sort.Slice(list.Items, func(i, j int) bool { return list.Items[i].Spec.Revision < list.Items[j].Spec.Revision })
 	return list.Items, nil
 }
 
-func lastOf(revs []v1beta1.PackageRevision) *v1beta1.PackageRevision {
+func lastOf(revs []v1.PackageRevision) *v1.PackageRevision {
 	if len(revs) == 0 {
 		return nil
 	}
 	return &revs[len(revs)-1]
 }
 
-func historyLimit(pkg *v1beta1.Package) int {
+func historyLimit(pkg *v1.Package) int {
 	if pkg.Spec.RevisionHistoryLimit != nil && *pkg.Spec.RevisionHistoryLimit > 0 {
 		return int(*pkg.Spec.RevisionHistoryLimit)
 	}
@@ -52,14 +52,14 @@ func historyLimit(pkg *v1beta1.Package) int {
 
 // prune deletes the oldest revisions beyond the limit, but never the newest
 // successfully applied one: it is what a failed upgrade rolls back to.
-func (r *PackageReconciler) prune(ctx context.Context, pkg *v1beta1.Package, revs *[]v1beta1.PackageRevision) error {
+func (r *PackageReconciler) prune(ctx context.Context, pkg *v1.Package, revs *[]v1.PackageRevision) error {
 	limit := historyLimit(pkg)
 	if len(*revs) <= limit {
 		return nil
 	}
 	keep := lastGood(*revs, 1<<62)
 	excess := len(*revs) - limit
-	var kept []v1beta1.PackageRevision
+	var kept []v1.PackageRevision
 	for i := range *revs {
 		rev := &(*revs)[i]
 		if excess > 0 && (keep == nil || rev.Spec.Revision != keep.Spec.Revision) {
@@ -76,11 +76,11 @@ func (r *PackageReconciler) prune(ctx context.Context, pkg *v1beta1.Package, rev
 }
 
 // recordHistory summarises recent revisions in the Package status.
-func (r *PackageReconciler) recordHistory(pkg *v1beta1.Package, revs *[]v1beta1.PackageRevision) {
-	var h []v1beta1.RevisionSummary
+func (r *PackageReconciler) recordHistory(pkg *v1.Package, revs *[]v1.PackageRevision) {
+	var h []v1.RevisionSummary
 	for i := len(*revs) - 1; i >= 0 && len(h) < defaultHistoryLimit; i-- {
 		rev := (*revs)[i]
-		h = append(h, v1beta1.RevisionSummary{Revision: rev.Spec.Revision, Version: rev.Spec.Version, Phase: rev.Status.Phase})
+		h = append(h, v1.RevisionSummary{Revision: rev.Spec.Revision, Version: rev.Spec.Version, Phase: rev.Status.Phase})
 	}
 	pkg.Status.History = h
 }

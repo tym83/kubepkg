@@ -22,19 +22,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 func pkgs() []Package {
 	d := "sha256:" + strings.Repeat("a", 64)
 	return []Package{
 		{Name: "virtualization", Version: "1.0.0", Build: 1, Repository: "main", Digest: "sha256:" + strings.Repeat("1", 64),
-			Spec: v1beta1.PackageSourceSpec{Variants: []v1beta1.Variant{{Name: "default", Requires: []v1beta1.Requirement{{Package: "kubevirt"}, {Package: "cdi"}}}}}},
+			Spec: v1.PackageSourceSpec{Variants: []v1.Variant{{Name: "default", Requires: []v1.Requirement{{Package: "kubevirt"}, {Package: "cdi"}}}}}},
 		{Name: "kubevirt", Version: "1.9.0", Build: 6, Repository: "main", Digest: "sha256:" + strings.Repeat("2", 64),
-			Spec: v1beta1.PackageSourceSpec{
+			Spec: v1.PackageSourceSpec{
 				Images: []string{"quay.io/kubevirt/virt-api:v1.9.0@" + d},
-				Variants: []v1beta1.Variant{{Name: "default", Components: []v1beta1.Component{
-					{Name: "operator", Chart: &v1beta1.ChartRef{Repository: "oci://ghcr.io/org/packages/kubevirt", Name: "kubevirt-operator", Version: "1.9.0-6", Digest: "sha256:" + strings.Repeat("b", 64)}},
+				Variants: []v1.Variant{{Name: "default", Components: []v1.Component{
+					{Name: "operator", Chart: &v1.ChartRef{Repository: "oci://ghcr.io/org/packages/kubevirt", Name: "kubevirt-operator", Version: "1.9.0-6", Digest: "sha256:" + strings.Repeat("b", 64)}},
 				}}}}},
 	}
 }

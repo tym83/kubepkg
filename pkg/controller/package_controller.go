@@ -39,7 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/admission"
 	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/resolve"
@@ -71,7 +71,7 @@ type PackageReconciler struct {
 
 // Reconcile is the main loop.
 func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	pkg := &v1beta1.Package{}
+	pkg := &v1.Package{}
 	if err := r.Get(ctx, req.NamespacedName, pkg); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -100,39 +100,39 @@ func (r *PackageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return res, err
 }
 
-func setReady(pkg *v1beta1.Package, status metav1.ConditionStatus, reason, msg string) {
+func setReady(pkg *v1.Package, status metav1.ConditionStatus, reason, msg string) {
 	meta.SetStatusCondition(&pkg.Status.Conditions, metav1.Condition{
 		Type: "Ready", Status: status, Reason: reason, Message: msg, ObservedGeneration: pkg.Generation,
 	})
 }
 
-func (r *PackageReconciler) reconcile(ctx context.Context, pkg *v1beta1.Package) (ctrl.Result, error) {
+func (r *PackageReconciler) reconcile(ctx context.Context, pkg *v1.Package) (ctrl.Result, error) {
 	if r.Repositories != nil {
 		if res, done, err := r.selectSource(ctx, pkg); done {
 			return res, err
 		}
 	}
-	src := &v1beta1.PackageSource{}
+	src := &v1.PackageSource{}
 	if err := r.Get(ctx, types.NamespacedName{Name: pkg.Name}, src); err != nil {
 		if apierrors.IsNotFound(err) {
-			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonPackageSourceNotFound, fmt.Sprintf("PackageSource %s not found", pkg.Name))
+			setReady(pkg, metav1.ConditionFalse, v1.ReasonPackageSourceNotFound, fmt.Sprintf("PackageSource %s not found", pkg.Name))
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 	v := findVariant(src, variantName(pkg))
 	if v == nil {
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonVariantNotFound, fmt.Sprintf("Variant %s not found in PackageSource %s", variantName(pkg), pkg.Name))
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonVariantNotFound, fmt.Sprintf("Variant %s not found in PackageSource %s", variantName(pkg), pkg.Name))
 		return ctrl.Result{}, nil
 	}
 
 	ok, err := resolve.Satisfies(sourceVersion(src), pkg.Spec.Version)
 	if err != nil {
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonVersionMismatch, err.Error())
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonVersionMismatch, err.Error())
 		return ctrl.Result{}, nil
 	}
 	if !ok {
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonVersionMismatch,
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonVersionMismatch,
 			fmt.Sprintf("PackageSource version %s does not satisfy %s", sourceVersion(src), pkg.Spec.Version))
 		return ctrl.Result{}, nil
 	}
@@ -144,7 +144,7 @@ func (r *PackageReconciler) reconcile(ctx context.Context, pkg *v1beta1.Package)
 	reqs := requirementsOf(pkg, v)
 	unmet, err := resolve.Check(reqs, st)
 	if err != nil {
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonRequirementsNotMet, err.Error())
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonRequirementsNotMet, err.Error())
 		return ctrl.Result{}, nil
 	}
 	r.recordDependencies(pkg, reqs, st)
@@ -153,12 +153,12 @@ func (r *PackageReconciler) reconcile(ctx context.Context, pkg *v1beta1.Package)
 		for _, u := range unmet {
 			parts = append(parts, u.String())
 		}
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonRequirementsNotMet, strings.Join(parts, "; "))
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonRequirementsNotMet, strings.Join(parts, "; "))
 		return ctrl.Result{RequeueAfter: waitRequeue}, nil
 	}
 	self := resolve.Release{Name: pkg.Name, Version: sourceVersion(src), Provides: src.Spec.Provides, Conflicts: src.Spec.Conflicts}
 	if c := resolve.Conflicts(self, st); len(c) > 0 {
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonConflict, "conflicts with installed "+strings.Join(c, ", "))
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonConflict, "conflicts with installed "+strings.Join(c, ", "))
 		return ctrl.Result{}, nil
 	}
 	if r.CRDs != nil {
@@ -192,7 +192,7 @@ func (r *PackageReconciler) reconcile(ctx context.Context, pkg *v1beta1.Package)
 
 	latest := lastOf(revs)
 	switch {
-	case latest != nil && latest.Status.Phase == v1beta1.PhaseApplying && latest.Annotations[AnnotationDesiredDigest] == d.digest:
+	case latest != nil && latest.Status.Phase == v1.PhaseApplying && latest.Annotations[AnnotationDesiredDigest] == d.digest:
 		return r.progress(ctx, pkg, latest, d, &revs, src)
 	case latest != nil && latest.Annotations[AnnotationDesiredDigest] == d.digest && held(latest):
 		// A failed or rolled-back state stays until the desired state
@@ -200,39 +200,39 @@ func (r *PackageReconciler) reconcile(ctx context.Context, pkg *v1beta1.Package)
 		r.reportHeld(pkg, latest)
 		return ctrl.Result{}, nil
 	case latest != nil && latest.Annotations[AnnotationDesiredDigest] == d.digest &&
-		latest.Status.Phase == v1beta1.PhaseApplied && sameComponents(latest.Spec.Components, d.components):
+		latest.Status.Phase == v1.PhaseApplied && sameComponents(latest.Spec.Components, d.components):
 		return r.observe(ctx, pkg, latest, d)
 	}
 	return r.applyNew(ctx, pkg, d, &revs, src)
 }
 
-func held(rev *v1beta1.PackageRevision) bool {
-	return rev.Status.Phase == v1beta1.PhaseFailed || rev.Spec.RestoredFrom != 0
+func held(rev *v1.PackageRevision) bool {
+	return rev.Status.Phase == v1.PhaseFailed || rev.Spec.RestoredFrom != 0
 }
 
-func (r *PackageReconciler) reportHeld(pkg *v1beta1.Package, rev *v1beta1.PackageRevision) {
+func (r *PackageReconciler) reportHeld(pkg *v1.Package, rev *v1.PackageRevision) {
 	pkg.Status.CurrentRevision = rev.Spec.Revision
 	if rev.Spec.RestoredFrom != 0 {
-		reason := v1beta1.ReasonUpgradeRolledBack
+		reason := v1.ReasonUpgradeRolledBack
 		if rev.Status.Message == "" {
 			rev.Status.Message = fmt.Sprintf("restored revision %d", rev.Spec.RestoredFrom)
 		}
 		pkg.Status.Version = rev.Spec.Version
-		if rev.Annotations[AnnotationRollbackRequested] == "true" && rev.Status.Phase == v1beta1.PhaseApplied {
+		if rev.Annotations[AnnotationRollbackRequested] == "true" && rev.Status.Phase == v1.PhaseApplied {
 			// Someone asked for this state and it runs: the package is
 			// healthy, it just does not follow its spec until told to.
-			setReady(pkg, metav1.ConditionTrue, v1beta1.ReasonRolledBack, rev.Status.Message+"; change the Package or set "+AnnotationRetry+" to follow it again")
+			setReady(pkg, metav1.ConditionTrue, v1.ReasonRolledBack, rev.Status.Message+"; change the Package or set "+AnnotationRetry+" to follow it again")
 			return
 		}
 		setReady(pkg, metav1.ConditionFalse, reason, rev.Status.Message+"; change the Package or set "+AnnotationRetry+" to try again")
 		return
 	}
-	setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonUpgradeFailed, rev.Status.Message+"; change the Package or set "+AnnotationRetry+" to try again")
+	setReady(pkg, metav1.ConditionFalse, v1.ReasonUpgradeFailed, rev.Status.Message+"; change the Package or set "+AnnotationRetry+" to try again")
 }
 
 // observe keeps an applied revision honest: the backend may report a release
 // that broke after it was applied.
-func (r *PackageReconciler) observe(ctx context.Context, pkg *v1beta1.Package, rev *v1beta1.PackageRevision, d *desiredState) (ctrl.Result, error) {
+func (r *PackageReconciler) observe(ctx context.Context, pkg *v1.Package, rev *v1.PackageRevision, d *desiredState) (ctrl.Result, error) {
 	pkg.Status.CurrentRevision = rev.Spec.Revision
 	pkg.Status.Version = rev.Spec.Version
 	for _, c := range d.components {
@@ -242,18 +242,18 @@ func (r *PackageReconciler) observe(ctx context.Context, pkg *v1beta1.Package, r
 		}
 		if !s.Ready {
 			msg := fmt.Sprintf("component %s is not ready: %s", c.snapshot.Name, s.Message)
-			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing, msg)
+			setReady(pkg, metav1.ConditionFalse, v1.ReasonProgressing, msg)
 			return ctrl.Result{RequeueAfter: progressRequeue}, nil
 		}
 	}
-	setReady(pkg, metav1.ConditionTrue, v1beta1.ReasonApplied,
+	setReady(pkg, metav1.ConditionTrue, v1.ReasonApplied,
 		fmt.Sprintf("reconciliation succeeded, revision %d, %d component(s)", rev.Spec.Revision, len(d.components)))
 	return ctrl.Result{}, nil
 }
 
 // applyNew records a new revision and applies it.
-func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1beta1.Package, d *desiredState, revs *[]v1beta1.PackageRevision, src *v1beta1.PackageSource) (ctrl.Result, error) {
-	if r.CRDs != nil && pkg.Spec.CRDPolicy != v1beta1.CRDPolicyDelete {
+func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1.Package, d *desiredState, revs *[]v1.PackageRevision, src *v1.PackageSource) (ctrl.Result, error) {
+	if r.CRDs != nil && pkg.Spec.CRDPolicy != v1.CRDPolicyDelete {
 		// A CRD the new version stops shipping would be deleted by its
 		// release, and every object of it with it; keep it instead.
 		if err := r.CRDs.Retain(ctx, pkg.Name, src.Spec.CRDs); err != nil {
@@ -264,13 +264,13 @@ func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1beta1.Package, 
 	if l := lastOf(*revs); l != nil {
 		n = l.Spec.Revision + 1
 	}
-	rev := &v1beta1.PackageRevision{
+	rev := &v1.PackageRevision{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf("%s-%d", pkg.Name, n),
-			Labels:      map[string]string{v1beta1.LabelPackage: pkg.Name},
+			Labels:      map[string]string{v1.LabelPackage: pkg.Name},
 			Annotations: map[string]string{AnnotationDesiredDigest: d.digest},
 		},
-		Spec: v1beta1.PackageRevisionSpec{
+		Spec: v1.PackageRevisionSpec{
 			Package: pkg.Name, Revision: n, Version: d.version, Variant: d.variant, RollbackSafe: d.rollbackSafe && len(moved(lastGood(*revs, n), d)) == 0,
 		},
 	}
@@ -283,18 +283,18 @@ func (r *PackageReconciler) applyNew(ctx context.Context, pkg *v1beta1.Package, 
 	if err := r.Create(ctx, rev); err != nil {
 		return ctrl.Result{}, fmt.Errorf("record revision %d: %w", n, err)
 	}
-	rev.Status.Phase = v1beta1.PhaseApplying
+	rev.Status.Phase = v1.PhaseApplying
 	if err := r.Status().Update(ctx, rev); err != nil {
 		return ctrl.Result{}, err
 	}
 	*revs = append(*revs, *rev)
-	setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing, fmt.Sprintf("applying revision %d", n))
+	setReady(pkg, metav1.ConditionFalse, v1.ReasonProgressing, fmt.Sprintf("applying revision %d", n))
 	return r.progress(ctx, pkg, &(*revs)[len(*revs)-1], d, revs, src)
 }
 
 // progress applies the components of a revision that is being applied and
 // settles it as Applied or Failed.
-func (r *PackageReconciler) progress(ctx context.Context, pkg *v1beta1.Package, rev *v1beta1.PackageRevision, d *desiredState, revs *[]v1beta1.PackageRevision, src *v1beta1.PackageSource) (ctrl.Result, error) {
+func (r *PackageReconciler) progress(ctx context.Context, pkg *v1.Package, rev *v1.PackageRevision, d *desiredState, revs *[]v1.PackageRevision, src *v1.PackageSource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	pkg.Status.CurrentRevision = rev.Spec.Revision
 	// Components go one at a time in dependency order: the next one is
@@ -309,7 +309,7 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1beta1.Package, 
 	// first: its cluster-wide objects belong to the old release, and the
 	// new one could not be installed next to it.
 	if err := r.removeMoved(ctx, pkg, d, *revs, rev); errors.Is(err, backend.ErrUninstalling) {
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing, fmt.Sprintf("applying revision %d: removing components from where they were", rev.Spec.Revision))
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonProgressing, fmt.Sprintf("applying revision %d: removing components from where they were", rev.Spec.Revision))
 		return ctrl.Result{RequeueAfter: progressRequeue}, nil
 	} else if err != nil {
 		return ctrl.Result{}, err
@@ -348,18 +348,18 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1beta1.Package, 
 			if err := r.Status().Update(ctx, rev); err != nil {
 				return ctrl.Result{}, err
 			}
-			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing, fmt.Sprintf("applying revision %d: waiting for %s", rev.Spec.Revision, waiting))
+			setReady(pkg, metav1.ConditionFalse, v1.ReasonProgressing, fmt.Sprintf("applying revision %d: waiting for %s", rev.Spec.Revision, waiting))
 			return ctrl.Result{RequeueAfter: progressRequeue}, nil
 		}
 	}
 
 	if err := r.removeOrphans(ctx, pkg, d, *revs, rev); errors.Is(err, backend.ErrUninstalling) {
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing, fmt.Sprintf("applying revision %d: removing components the new version drops", rev.Spec.Revision))
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonProgressing, fmt.Sprintf("applying revision %d: removing components the new version drops", rev.Spec.Revision))
 		return ctrl.Result{RequeueAfter: progressRequeue}, nil
 	} else if err != nil {
 		return ctrl.Result{}, err
 	}
-	rev.Status.Phase = v1beta1.PhaseApplied
+	rev.Status.Phase = v1.PhaseApplied
 	rev.Status.Message = ""
 	if err := r.Status().Update(ctx, rev); err != nil {
 		return ctrl.Result{}, err
@@ -370,8 +370,8 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1beta1.Package, 
 	}
 	for i := range *revs {
 		o := &(*revs)[i]
-		if o.Spec.Revision < rev.Spec.Revision && o.Status.Phase == v1beta1.PhaseApplied {
-			o.Status.Phase = v1beta1.PhaseSuperseded
+		if o.Spec.Revision < rev.Spec.Revision && o.Status.Phase == v1.PhaseApplied {
+			o.Status.Phase = v1.PhaseSuperseded
 			if err := r.Status().Update(ctx, o); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -394,12 +394,12 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1beta1.Package, 
 		return ctrl.Result{}, err
 	}
 	pkg.Status.Version = rev.Spec.Version
-	setReady(pkg, metav1.ConditionTrue, v1beta1.ReasonApplied,
+	setReady(pkg, metav1.ConditionTrue, v1.ReasonApplied,
 		fmt.Sprintf("reconciliation succeeded, revision %d, %d component(s)", rev.Spec.Revision, len(d.components)))
 	return ctrl.Result{}, nil
 }
 
-func setComponentStatus(rev *v1beta1.PackageRevision, name string, backendRev int) {
+func setComponentStatus(rev *v1.PackageRevision, name string, backendRev int) {
 	for i := range rev.Status.Components {
 		if rev.Status.Components[i].Name == name {
 			if backendRev != 0 {
@@ -408,18 +408,18 @@ func setComponentStatus(rev *v1beta1.PackageRevision, name string, backendRev in
 			return
 		}
 	}
-	rev.Status.Components = append(rev.Status.Components, v1beta1.ComponentRevisionStatus{Name: name, BackendRevision: backendRev})
+	rev.Status.Components = append(rev.Status.Components, v1.ComponentRevisionStatus{Name: name, BackendRevision: backendRev})
 }
 
-func atomic(pkg *v1beta1.Package) bool {
+func atomic(pkg *v1.Package) bool {
 	return pkg.Spec.Upgrade == nil || pkg.Spec.Upgrade.Atomic == nil || *pkg.Spec.Upgrade.Atomic
 }
 
 // lastGood is the newest revision that was applied successfully.
-func lastGood(revs []v1beta1.PackageRevision, before int64) *v1beta1.PackageRevision {
+func lastGood(revs []v1.PackageRevision, before int64) *v1.PackageRevision {
 	for i := len(revs) - 1; i >= 0; i-- {
 		p := revs[i].Status.Phase
-		if revs[i].Spec.Revision < before && (p == v1beta1.PhaseApplied || p == v1beta1.PhaseSuperseded) {
+		if revs[i].Spec.Revision < before && (p == v1.PhaseApplied || p == v1.PhaseSuperseded) {
 			return &revs[i]
 		}
 	}
@@ -428,8 +428,8 @@ func lastGood(revs []v1beta1.PackageRevision, before int64) *v1beta1.PackageRevi
 
 // fail settles a failed revision: rolls the package back as a whole when
 // that is allowed and safe, otherwise leaves it for a forward fix.
-func (r *PackageReconciler) fail(ctx context.Context, pkg *v1beta1.Package, rev *v1beta1.PackageRevision, d *desiredState, applied []desiredComponent, revs *[]v1beta1.PackageRevision, msg string) (ctrl.Result, error) {
-	rev.Status.Phase = v1beta1.PhaseFailed
+func (r *PackageReconciler) fail(ctx context.Context, pkg *v1.Package, rev *v1.PackageRevision, d *desiredState, applied []desiredComponent, revs *[]v1.PackageRevision, msg string) (ctrl.Result, error) {
+	rev.Status.Phase = v1.PhaseFailed
 	rev.Status.Message = msg
 	if err := r.Status().Update(ctx, rev); err != nil {
 		return ctrl.Result{}, err
@@ -441,8 +441,8 @@ func (r *PackageReconciler) fail(ctx context.Context, pkg *v1beta1.Package, rev 
 	// stays the rollback target, but it is not what is applied any more.
 	for i := range *revs {
 		o := &(*revs)[i]
-		if o.Spec.Revision < rev.Spec.Revision && o.Status.Phase == v1beta1.PhaseApplied {
-			o.Status.Phase = v1beta1.PhaseSuperseded
+		if o.Spec.Revision < rev.Spec.Revision && o.Status.Phase == v1.PhaseApplied {
+			o.Status.Phase = v1.PhaseSuperseded
 			if err := r.Status().Update(ctx, o); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -450,19 +450,19 @@ func (r *PackageReconciler) fail(ctx context.Context, pkg *v1beta1.Package, rev 
 	}
 	switch {
 	case !atomic(pkg):
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonUpgradeFailed, msg+" (atomic upgrades are off)")
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonUpgradeFailed, msg+" (atomic upgrades are off)")
 		return ctrl.Result{}, nil
 	case prev == nil:
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonUpgradeFailed, msg+" (no earlier revision to return to)")
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonUpgradeFailed, msg+" (no earlier revision to return to)")
 		return ctrl.Result{}, nil
 	case !d.rollbackSafe:
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonUpgradeFailed,
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonUpgradeFailed,
 			fmt.Sprintf("%s (version %s does not declare rollback as safe; fix forward)", msg, d.version))
 		return ctrl.Result{}, nil
 	}
 
 	if err := r.restoreComponents(ctx, prev, applied); err != nil {
-		setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonUpgradeFailed, fmt.Sprintf("%s; rolling back failed too: %v", msg, err))
+		setReady(pkg, metav1.ConditionFalse, v1.ReasonUpgradeFailed, fmt.Sprintf("%s; rolling back failed too: %v", msg, err))
 		return ctrl.Result{}, nil
 	}
 	restored, err := r.recordRestored(ctx, pkg, prev, d.digest, *revs, false, fmt.Sprintf("revision %d failed (%s), restored revision %d", rev.Spec.Revision, msg, prev.Spec.Revision))
@@ -472,14 +472,14 @@ func (r *PackageReconciler) fail(ctx context.Context, pkg *v1beta1.Package, rev 
 	*revs = append(*revs, *restored)
 	pkg.Status.CurrentRevision = restored.Spec.Revision
 	pkg.Status.Version = restored.Spec.Version
-	setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonUpgradeRolledBack, restored.Status.Message)
+	setReady(pkg, metav1.ConditionFalse, v1.ReasonUpgradeRolledBack, restored.Status.Message)
 	countRevision(pkg.Name, outcomeRolledBack)
 	return ctrl.Result{}, nil
 }
 
 // restoreComponents returns the given components to their state in prev,
 // newest first. A component prev did not have is removed.
-func (r *PackageReconciler) restoreComponents(ctx context.Context, prev *v1beta1.PackageRevision, comps []desiredComponent) error {
+func (r *PackageReconciler) restoreComponents(ctx context.Context, prev *v1.PackageRevision, comps []desiredComponent) error {
 	backendRev := map[string]int{}
 	for _, s := range prev.Status.Components {
 		backendRev[s.Name] = s.BackendRevision
@@ -509,12 +509,12 @@ func (r *PackageReconciler) restoreComponents(ctx context.Context, prev *v1beta1
 
 // recordRestored writes a revision that re-applies prev. It carries the
 // current desired digest so the operator does not immediately upgrade again.
-func (r *PackageReconciler) recordRestored(ctx context.Context, pkg *v1beta1.Package, prev *v1beta1.PackageRevision, digest string, revs []v1beta1.PackageRevision, requested bool, msg string) (*v1beta1.PackageRevision, error) {
+func (r *PackageReconciler) recordRestored(ctx context.Context, pkg *v1.Package, prev *v1.PackageRevision, digest string, revs []v1.PackageRevision, requested bool, msg string) (*v1.PackageRevision, error) {
 	n := lastOf(revs).Spec.Revision + 1
-	restored := &v1beta1.PackageRevision{
+	restored := &v1.PackageRevision{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf("%s-%d", pkg.Name, n),
-			Labels:      map[string]string{v1beta1.LabelPackage: pkg.Name},
+			Labels:      map[string]string{v1.LabelPackage: pkg.Name},
 			Annotations: map[string]string{AnnotationDesiredDigest: digest},
 		},
 		Spec: *prev.Spec.DeepCopy(),
@@ -530,7 +530,7 @@ func (r *PackageReconciler) recordRestored(ctx context.Context, pkg *v1beta1.Pac
 	if err := r.Create(ctx, restored); err != nil {
 		return nil, err
 	}
-	restored.Status.Phase = v1beta1.PhaseApplied
+	restored.Status.Phase = v1.PhaseApplied
 	restored.Status.Message = msg
 	for _, c := range prev.Spec.Components {
 		bc := backend.Component{Name: c.Name, ReleaseName: c.ReleaseName, Namespace: c.Namespace}
@@ -545,8 +545,8 @@ func (r *PackageReconciler) recordRestored(ctx context.Context, pkg *v1beta1.Pac
 	}
 	for i := range revs {
 		o := &revs[i]
-		if o.Status.Phase == v1beta1.PhaseApplied {
-			o.Status.Phase = v1beta1.PhaseSuperseded
+		if o.Status.Phase == v1.PhaseApplied {
+			o.Status.Phase = v1.PhaseSuperseded
 			if err := r.Status().Update(ctx, o); err != nil {
 				return nil, err
 			}
@@ -556,20 +556,20 @@ func (r *PackageReconciler) recordRestored(ctx context.Context, pkg *v1beta1.Pac
 }
 
 // rollbackTo handles the rollback annotation: re-apply an earlier revision.
-func (r *PackageReconciler) rollbackTo(ctx context.Context, pkg *v1beta1.Package, value string, d *desiredState, revs *[]v1beta1.PackageRevision) (ctrl.Result, error) {
+func (r *PackageReconciler) rollbackTo(ctx context.Context, pkg *v1.Package, value string, d *desiredState, revs *[]v1.PackageRevision) (ctrl.Result, error) {
 	clear := func() error {
 		patch := client.MergeFrom(pkg.DeepCopy())
 		delete(pkg.Annotations, AnnotationRollbackTo)
 		return r.Patch(ctx, pkg, patch)
 	}
 	n, err := strconv.ParseInt(value, 10, 64)
-	var target *v1beta1.PackageRevision
+	var target *v1.PackageRevision
 	for i := range *revs {
 		if err == nil && (*revs)[i].Spec.Revision == n {
 			target = &(*revs)[i]
 		}
 	}
-	if target == nil || (target.Status.Phase != v1beta1.PhaseApplied && target.Status.Phase != v1beta1.PhaseSuperseded) {
+	if target == nil || (target.Status.Phase != v1.PhaseApplied && target.Status.Phase != v1.PhaseSuperseded) {
 		setReady(pkg, metav1.ConditionFalse, "RollbackFailed", fmt.Sprintf("revision %q is not a successfully applied revision", value))
 		return ctrl.Result{}, clear()
 	}
@@ -600,13 +600,13 @@ func (r *PackageReconciler) rollbackTo(ctx context.Context, pkg *v1beta1.Package
 	*revs = append(*revs, *restored)
 	pkg.Status.CurrentRevision = restored.Spec.Revision
 	pkg.Status.Version = restored.Spec.Version
-	setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonUpgradeRolledBack, restored.Status.Message)
+	setReady(pkg, metav1.ConditionFalse, v1.ReasonUpgradeRolledBack, restored.Status.Message)
 	countRevision(pkg.Name, outcomeRolledBack)
 	return ctrl.Result{}, clear()
 }
 
 // moved lists the releases of prev whose components d installs elsewhere.
-func moved(prev *v1beta1.PackageRevision, d *desiredState) []v1beta1.ComponentSnapshot {
+func moved(prev *v1.PackageRevision, d *desiredState) []v1.ComponentSnapshot {
 	if prev == nil {
 		return nil
 	}
@@ -614,7 +614,7 @@ func moved(prev *v1beta1.PackageRevision, d *desiredState) []v1beta1.ComponentSn
 	for _, c := range d.components {
 		now[c.snapshot.Name] = c.snapshot.Namespace + "/" + c.snapshot.ReleaseName
 	}
-	var out []v1beta1.ComponentSnapshot
+	var out []v1.ComponentSnapshot
 	for _, c := range prev.Spec.Components {
 		if where, ok := now[c.Name]; ok && where != c.Namespace+"/"+c.ReleaseName {
 			out = append(out, c)
@@ -625,7 +625,7 @@ func moved(prev *v1beta1.PackageRevision, d *desiredState) []v1beta1.ComponentSn
 
 // removeMoved uninstalls the old releases of components that moved. Such
 // a revision cannot be rolled back, since the old release is gone.
-func (r *PackageReconciler) removeMoved(ctx context.Context, pkg *v1beta1.Package, d *desiredState, revs []v1beta1.PackageRevision, rev *v1beta1.PackageRevision) error {
+func (r *PackageReconciler) removeMoved(ctx context.Context, pkg *v1.Package, d *desiredState, revs []v1.PackageRevision, rev *v1.PackageRevision) error {
 	for _, c := range moved(lastGood(revs, rev.Spec.Revision), d) {
 		if err := r.Backend.Uninstall(ctx, backend.Component{Package: pkg.Name, Name: c.Name, ReleaseName: c.ReleaseName, Namespace: c.Namespace}); err != nil {
 			return err
@@ -636,7 +636,7 @@ func (r *PackageReconciler) removeMoved(ctx context.Context, pkg *v1beta1.Packag
 
 // removeOrphans uninstalls components the previous revision had and this
 // one does not.
-func (r *PackageReconciler) removeOrphans(ctx context.Context, pkg *v1beta1.Package, d *desiredState, revs []v1beta1.PackageRevision, rev *v1beta1.PackageRevision) error {
+func (r *PackageReconciler) removeOrphans(ctx context.Context, pkg *v1.Package, d *desiredState, revs []v1.PackageRevision, rev *v1.PackageRevision) error {
 	prev := lastGood(revs, rev.Spec.Revision)
 	if prev == nil {
 		return nil
@@ -660,19 +660,19 @@ func (r *PackageReconciler) removeOrphans(ctx context.Context, pkg *v1beta1.Pack
 // checkCRDs stops a package whose CRDs another package owns, unless that
 // package's chosen version no longer lists them: then they move to this
 // package, which takes them over into its own release.
-func (r *PackageReconciler) checkCRDs(ctx context.Context, pkg *v1beta1.Package, src *v1beta1.PackageSource) (ctrl.Result, bool, error) {
+func (r *PackageReconciler) checkCRDs(ctx context.Context, pkg *v1.Package, src *v1.PackageSource) (ctrl.Result, bool, error) {
 	for {
 		owner, crd, err := r.CRDs.Conflict(ctx, pkg.Name, src.Spec.CRDs)
 		if err != nil || owner == "" {
 			return ctrl.Result{}, false, err
 		}
-		other := &v1beta1.PackageSource{}
+		other := &v1.PackageSource{}
 		err = r.Get(ctx, types.NamespacedName{Name: owner}, other)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, true, err
 		}
 		if err == nil && slices.Contains(other.Spec.CRDs, crd) {
-			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonCRDOwnershipConflict, fmt.Sprintf("CRD %s is owned by package %s", crd, owner))
+			setReady(pkg, metav1.ConditionFalse, v1.ReasonCRDOwnershipConflict, fmt.Sprintf("CRD %s is owned by package %s", crd, owner))
 			return ctrl.Result{}, true, nil
 		}
 		if err := r.CRDs.Transfer(ctx, crd, owner, pkg.Name); err != nil {
@@ -693,7 +693,7 @@ func (r *PackageReconciler) checkCRDs(ctx context.Context, pkg *v1beta1.Package,
 }
 
 // finalize removes releases, newest components first, and handles CRDs.
-func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1beta1.Package) error {
+func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1.Package) error {
 	forgetPackage(pkg.Name)
 	if !controllerutil.ContainsFinalizer(pkg, FinalizerCleanup) {
 		return nil
@@ -702,7 +702,7 @@ func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1beta1.Package) 
 	if err != nil {
 		return err
 	}
-	deleteCRDs := pkg.Spec.CRDPolicy == v1beta1.CRDPolicyDelete
+	deleteCRDs := pkg.Spec.CRDPolicy == v1.CRDPolicyDelete
 	if r.CRDs != nil && !deleteCRDs {
 		// Kept CRDs must survive the releases that carry them going.
 		if err := r.CRDs.Retain(ctx, pkg.Name, nil); err != nil {
@@ -737,14 +737,14 @@ func (r *PackageReconciler) finalize(ctx context.Context, pkg *v1beta1.Package) 
 
 // recordDependencies reports the readiness of each required package in
 // status.dependencies.
-func (r *PackageReconciler) recordDependencies(pkg *v1beta1.Package, reqs []resolve.Requirement, st resolve.State) {
-	deps := map[string]v1beta1.DependencyStatus{}
+func (r *PackageReconciler) recordDependencies(pkg *v1.Package, reqs []resolve.Requirement, st resolve.State) {
+	deps := map[string]v1.DependencyStatus{}
 	for _, q := range reqs {
 		if q.Package == "" {
 			continue
 		}
 		p, ok := st.Packages[q.Package]
-		deps[q.Package] = v1beta1.DependencyStatus{Ready: ok && p.Ready}
+		deps[q.Package] = v1.DependencyStatus{Ready: ok && p.Ready}
 	}
 	if len(deps) == 0 {
 		deps = nil
@@ -760,14 +760,14 @@ func (r *PackageReconciler) dependencyReleases(ctx context.Context, reqs []resol
 		if q.Package == "" {
 			continue
 		}
-		dep := &v1beta1.Package{}
+		dep := &v1.Package{}
 		if err := r.Get(ctx, types.NamespacedName{Name: q.Package}, dep); err != nil {
 			if apierrors.IsNotFound(err) && q.Optional {
 				continue
 			}
 			return nil, client.IgnoreNotFound(err)
 		}
-		src := &v1beta1.PackageSource{}
+		src := &v1.PackageSource{}
 		if err := r.Get(ctx, types.NamespacedName{Name: q.Package}, src); err != nil {
 			return nil, client.IgnoreNotFound(err)
 		}
@@ -784,7 +784,7 @@ func (r *PackageReconciler) dependencyReleases(ctx context.Context, reqs []resol
 
 // reconcileNamespaces creates the namespaces components go to. A namespace
 // becomes privileged when any package has a privileged component in it.
-func (r *PackageReconciler) reconcileNamespaces(ctx context.Context, pkg *v1beta1.Package, v *v1beta1.Variant) error {
+func (r *PackageReconciler) reconcileNamespaces(ctx context.Context, pkg *v1.Package, v *v1.Variant) error {
 	targets := map[string]bool{}
 	for _, c := range enabledComponents(pkg, v) {
 		if ns, _ := placement(pkg, c); ns != "" {
@@ -954,13 +954,13 @@ func (r *PackageReconciler) namespaceFacts(ctx context.Context, targets map[stri
 	for n, p := range targets {
 		out[n] = p
 	}
-	var pkgs v1beta1.PackageList
+	var pkgs v1.PackageList
 	if err := r.List(ctx, &pkgs); err != nil {
 		return nil, nil, err
 	}
 	for i := range pkgs.Items {
 		p := &pkgs.Items[i]
-		src := &v1beta1.PackageSource{}
+		src := &v1.PackageSource{}
 		if err := r.Get(ctx, types.NamespacedName{Name: p.Name}, src); err != nil {
 			continue
 		}
@@ -992,7 +992,7 @@ func (r *PackageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: o.GetName()}}}
 	})
 	waiting := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
-		var pkgs v1beta1.PackageList
+		var pkgs v1.PackageList
 		if err := mgr.GetClient().List(ctx, &pkgs); err != nil {
 			return nil
 		}
@@ -1006,11 +1006,11 @@ func (r *PackageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	})
 	b := ctrl.NewControllerManagedBy(mgr).
 		Named("kubepkg-package").
-		For(&v1beta1.Package{}).
-		Watches(&v1beta1.PackageSource{}, sameName).
-		Watches(&v1beta1.Package{}, waiting)
+		For(&v1.Package{}).
+		Watches(&v1.PackageSource{}, sameName).
+		Watches(&v1.Package{}, waiting)
 	if r.Repositories != nil {
-		b = b.Watches(&v1beta1.Repository{}, allPackages(mgr.GetClient()))
+		b = b.Watches(&v1.Repository{}, allPackages(mgr.GetClient()))
 	}
 	return b.Complete(r)
 }

@@ -44,14 +44,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {suite: run, backend: helm}
+          # The oldest and the newest supported Kubernetes, see
+          # docs/reference/compatibility.md; the others use kind's default.
+          - {suite: run, backend: helm, k8s: "1.35", node: "kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0"}
+          - {suite: run, backend: helm, k8s: "1.37", node: "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5"}
           - {suite: run, backend: werf}
           - {suite: flux, backend: flux}
           - {suite: argo, backend: argo}
           - {suite: kubevirt, backend: helm}
           - {suite: bundle, backend: helm}
           - {suite: adopt, backend: helm}
-    name: e2e (${{ matrix.suite }}, ${{ matrix.backend }})
+    name: e2e (${{ matrix.suite }}, ${{ matrix.backend }}${{ matrix.k8s && format(', Kubernetes {0}', matrix.k8s) || '' }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -61,6 +64,7 @@ jobs:
       - uses: helm/kind-action@v1
         with:
           install_only: true
+          version: v0.33.0
       - name: Install nelm
         if: matrix.backend == 'werf'
         run: |
@@ -72,4 +76,5 @@ jobs:
       - name: End-to-end on kind
         env:
           BACKEND: ${{ matrix.backend }}
+          KIND_NODE_IMAGE: ${{ matrix.node }}
         run: test/e2e/${{ matrix.suite }}.sh

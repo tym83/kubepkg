@@ -29,7 +29,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/resolve"
 )
 
@@ -89,14 +89,14 @@ func (r *PackageReconciler) clusterState(ctx context.Context) (resolve.State, er
 // same view the operator acts on.
 func ClusterState(ctx context.Context, c client.Reader, apis APIs) (resolve.State, error) {
 	st := resolve.State{Packages: map[string]resolve.Installed{}, APIs: map[string]bool{}}
-	var pkgs v1beta1.PackageList
+	var pkgs v1.PackageList
 	if err := c.List(ctx, &pkgs); err != nil {
 		return st, err
 	}
 	for i := range pkgs.Items {
 		p := &pkgs.Items[i]
 		inst := resolve.Installed{Release: resolve.Release{Name: p.Name, Version: p.Status.Version}, Ready: isReady(p.Status.Conditions)}
-		var src v1beta1.PackageSource
+		var src v1.PackageSource
 		if err := c.Get(ctx, types.NamespacedName{Name: p.Name}, &src); err == nil {
 			inst.Provides = src.Spec.Provides
 			inst.Conflicts = src.Spec.Conflicts
@@ -120,6 +120,6 @@ func ClusterState(ctx context.Context, c client.Reader, apis APIs) (resolve.Stat
 
 // requirementsOf turns a variant's requirements into resolve requirements,
 // minus what the Package chose to ignore.
-func requirementsOf(pkg *v1beta1.Package, v *v1beta1.Variant) []resolve.Requirement {
+func requirementsOf(pkg *v1.Package, v *v1.Variant) []resolve.Requirement {
 	return resolve.RequirementsOf(v, pkg.Spec.IgnoreDependencies)
 }

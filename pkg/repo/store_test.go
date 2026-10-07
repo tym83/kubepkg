@@ -23,12 +23,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 func entry(t *testing.T, version string, build int32) Version {
 	t.Helper()
-	spec := v1beta1.PackageSourceSpec{Version: version, Build: build}
+	spec := v1.PackageSourceSpec{Version: version, Build: build}
 	d, err := SpecDigest(spec)
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ func TestCatalogFollowsShadowing(t *testing.T) {
 }
 
 func TestVersionsFromANewerKubepkgAreLeftOutNotFatal(t *testing.T) {
-	good := v1beta1.PackageSourceSpec{Version: "1.0.0"}
+	good := v1.PackageSourceSpec{Version: "1.0.0"}
 	d, err := SpecDigest(good)
 	if err != nil {
 		t.Fatal(err)

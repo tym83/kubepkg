@@ -42,7 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/admission"
 	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/backend/argo"
@@ -215,7 +215,7 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 		return fmt.Errorf("unknown backend %q", o.Backend)
 	}
 	scheme := runtime.NewScheme()
-	adds := append([]func(*runtime.Scheme) error{corev1.AddToScheme, admissionregistrationv1.AddToScheme, v1beta1.AddToSchemeForGroup(o.Profile.Group)}, o.AddToScheme...)
+	adds := append([]func(*runtime.Scheme) error{corev1.AddToScheme, admissionregistrationv1.AddToScheme, v1.AddToSchemeForGroup(o.Profile.Group)}, o.AddToScheme...)
 	for _, add := range adds {
 		if err := add(scheme); err != nil {
 			return err
@@ -302,6 +302,11 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 		if err := mgr.AddReadyzCheck("webhook", mgr.GetWebhookServer().StartedChecker()); err != nil {
 			return err
 		}
+	}
+	if err := mgr.Add(&storageMigration{Reader: mgr.GetAPIReader(), Writer: mgr.GetClient(), Group: o.Profile.Group, Version: v1.Version,
+		Kinds: map[string]string{"packages": "Package", "packagesources": "PackageSource", "packagerevisions": "PackageRevision",
+			"repositories": "Repository", "clusters": "Cluster", "packagesets": "PackageSet"}}); err != nil {
+		return err
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		return err

@@ -25,7 +25,7 @@ kubepkg init recipes/kubevirt --version 1.9.0 \
 ## The recipe
 
 ```yaml title="recipes/kubevirt/recipe.yaml"
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata:
   name: kubevirt

@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/resolve"
 )
 
@@ -41,7 +41,7 @@ type Removal struct {
 
 // installedPackage is what remove needs to know about a package.
 type installedPackage struct {
-	pkg      v1beta1.Package
+	pkg      v1.Package
 	provides []string
 	requires []resolve.Requirement
 }
@@ -95,14 +95,14 @@ func PlanRemove(ctx context.Context, c client.Client, names []string, autoremove
 }
 
 func installedPackages(ctx context.Context, c client.Client) (map[string]installedPackage, error) {
-	var list v1beta1.PackageList
+	var list v1.PackageList
 	if err := c.List(ctx, &list); err != nil {
 		return nil, err
 	}
 	out := map[string]installedPackage{}
 	for _, p := range list.Items {
 		ip := installedPackage{pkg: p, provides: []string{p.Name}}
-		src := &v1beta1.PackageSource{}
+		src := &v1.PackageSource{}
 		err := c.Get(ctx, types.NamespacedName{Name: p.Name}, src)
 		switch {
 		case err == nil:
@@ -205,7 +205,7 @@ more. CRDs a package owns stay unless its crdPolicy is Delete.`,
 				}
 			}
 			for _, r := range plan {
-				if err := c.Delete(cmd.Context(), &v1beta1.Package{ObjectMeta: objectMeta(r.Name)}); err != nil && !apierrors.IsNotFound(err) {
+				if err := c.Delete(cmd.Context(), &v1.Package{ObjectMeta: objectMeta(r.Name)}); err != nil && !apierrors.IsNotFound(err) {
 					return err
 				}
 			}

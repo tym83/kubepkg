@@ -28,4 +28,4 @@ Packages are built from upstream sources by the people who maintain the reposito
 
 </div>
 
-kubepkg needs nothing but its CRDs and its operator, so it runs on any conformant Kubernetes cluster. It is tested on kind's default Kubernetes and on a 1.35 cluster with a hosted control plane. The API is `v1beta1`: it changes only in compatible ways, see [API versions](reference/api-versions.md).
+kubepkg needs nothing but its CRDs and its operator, so it runs on any conformant Kubernetes cluster. It is tested on Kubernetes 1.35 and 1.37 on kind, and on a cluster with a hosted control plane. The API is `v1`: it changes only in compatible ways, see [Compatibility](reference/compatibility.md).

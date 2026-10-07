@@ -5,7 +5,7 @@
 Everything you ask of kubepkg is a `Package`. `kubepkg install` writes these objects for you. You can also write them yourself and keep them in Git like any other manifest:
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata:
   name: cert-manager          # the package name

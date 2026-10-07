@@ -28,7 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/repo"
 )
 
@@ -52,10 +52,10 @@ func repoAddCmd(cl *cluster) *cobra.Command {
 				return err
 			}
 			spec.URL, spec.Priority = args[1], priority
-			if _, _, _, err := repo.LoadRepository(cmd.Context(), cl.fetchers, spec, v1beta1.RepositoryStatus{}, time.Now()); err != nil {
+			if _, _, _, err := repo.LoadRepository(cmd.Context(), cl.fetchers, spec, v1.RepositoryStatus{}, time.Now()); err != nil {
 				return fmt.Errorf("index at %s: %w", args[1], err)
 			}
-			rp := &v1beta1.Repository{ObjectMeta: metav1.ObjectMeta{Name: args[0]}, Spec: spec}
+			rp := &v1.Repository{ObjectMeta: metav1.ObjectMeta{Name: args[0]}, Spec: spec}
 			if interval > 0 {
 				rp.Spec.Interval = &metav1.Duration{Duration: interval}
 			}
@@ -82,7 +82,7 @@ func repoListCmd(cl *cluster) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var list v1beta1.RepositoryList
+			var list v1.RepositoryList
 			if err := c.List(cmd.Context(), &list); err != nil {
 				return err
 			}
@@ -113,7 +113,7 @@ func repoRemoveCmd(cl *cluster) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := c.Delete(cmd.Context(), &v1beta1.Repository{ObjectMeta: metav1.ObjectMeta{Name: args[0]}}); err != nil {
+			if err := c.Delete(cmd.Context(), &v1.Repository{ObjectMeta: metav1.ObjectMeta{Name: args[0]}}); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "repository %s removed\n", args[0])
@@ -126,7 +126,7 @@ func repoRemoveCmd(cl *cluster) *cobra.Command {
 // the operator does, so plans are made from the same versions. A
 // repository that cannot be read is reported and left out.
 func loadStore(ctx context.Context, c client.Client, fetchers repo.Fetchers, warn io.Writer) (*repo.Store, error) {
-	var list v1beta1.RepositoryList
+	var list v1.RepositoryList
 	if err := c.List(ctx, &list); err != nil {
 		return nil, err
 	}

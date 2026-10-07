@@ -381,7 +381,7 @@ func TestExcludeAndPatchCRDsOfAChartAndItsPackedSubcharts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "chart/charts/gateway-crds-1.0.0.tgz"), sub, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(dir, "recipe.yaml"), `apiVersion: kubepkg.dev/v1beta1
+	writeFile(t, filepath.Join(dir, "recipe.yaml"), `apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata: {name: gateway}
 spec:
@@ -422,7 +422,7 @@ spec:
 func TestCRDsOfWrappedManifestsCanGoToCrdsDir(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "upstream/all.yaml"), crdDoc("big.example.org")+"---\napiVersion: v1\nkind: ServiceAccount\nmetadata: {name: op}\n")
-	writeFile(t, filepath.Join(dir, "recipe.yaml"), `apiVersion: kubepkg.dev/v1beta1
+	writeFile(t, filepath.Join(dir, "recipe.yaml"), `apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata: {name: op}
 spec:
@@ -454,7 +454,7 @@ spec:
 
 func TestExcludeOnAPublishedChartLoads(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, RecipeFile), `apiVersion: kubepkg.dev/v1beta1
+	writeFile(t, filepath.Join(dir, RecipeFile), `apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata: {name: gateway}
 spec:
@@ -481,7 +481,7 @@ func TestNoUpgradeCRDsWarningForASubchartSwitchedOff(t *testing.T) {
 		writeFile(t, filepath.Join(dir, "chart/values.yaml"), fmt.Sprintf("crds: {plain: %v}\n", enabled))
 		writeFile(t, filepath.Join(dir, "chart/charts/crds/Chart.yaml"), "apiVersion: v2\nname: crds\nversion: 1.0.0\n")
 		writeFile(t, filepath.Join(dir, "chart/charts/crds/crds/x.yaml"), crdDoc("x.example.org"))
-		writeFile(t, filepath.Join(dir, RecipeFile), `apiVersion: kubepkg.dev/v1beta1
+		writeFile(t, filepath.Join(dir, RecipeFile), `apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata: {name: op, annotations: {kubepkg.dev/description: op}}
 spec:

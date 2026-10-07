@@ -31,7 +31,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/bundle"
 	"github.com/tym83/kubepkg/pkg/images"
 	"github.com/tym83/kubepkg/pkg/source"
@@ -52,8 +52,8 @@ func (t *trustFlags) bind(cmd *cobra.Command) {
 }
 
 // spec fills the trust part of a repository spec from key files.
-func (t *trustFlags) spec() (v1beta1.RepositorySpec, error) {
-	s := v1beta1.RepositorySpec{AllowUnsigned: t.allowUnsigned}
+func (t *trustFlags) spec() (v1.RepositorySpec, error) {
+	s := v1.RepositorySpec{AllowUnsigned: t.allowUnsigned}
 	read := func(files []string) ([]string, error) {
 		var out []string
 		for _, f := range files {
@@ -74,7 +74,7 @@ func (t *trustFlags) spec() (v1beta1.RepositorySpec, error) {
 		if err != nil {
 			return s, err
 		}
-		s.Trust = &v1beta1.RepositoryTrust{RootKeys: keys, RootThreshold: t.rootThreshold}
+		s.Trust = &v1.RepositoryTrust{RootKeys: keys, RootThreshold: t.rootThreshold}
 	}
 	return s, nil
 }
@@ -103,7 +103,7 @@ func repoSources(ctx context.Context, cl *cluster, repos []string, trust trustFl
 		if err != nil {
 			return nil, err
 		}
-		var list v1beta1.RepositoryList
+		var list v1.RepositoryList
 		if err := c.List(ctx, &list); err != nil {
 			return nil, err
 		}

@@ -33,7 +33,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 // Roles a root delegates.
@@ -472,7 +472,7 @@ func LoadIndexWithRoot(ctx context.Context, fetchers Fetchers, url string, trust
 // its pinned root, with plain public keys, or unchecked. It refuses an
 // index older than the one in status and returns the root reached, for
 // status, when the repository has a root.
-func LoadRepository(ctx context.Context, fetchers Fetchers, spec v1beta1.RepositorySpec, status v1beta1.RepositoryStatus, now time.Time) (*Index, []byte, Trust, error) {
+func LoadRepository(ctx context.Context, fetchers Fetchers, spec v1.RepositorySpec, status v1.RepositoryStatus, now time.Time) (*Index, []byte, Trust, error) {
 	var (
 		idx   *Index
 		raw   []byte

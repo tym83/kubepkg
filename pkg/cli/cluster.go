@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/repo"
 	"github.com/tym83/kubepkg/pkg/version"
 )
@@ -56,7 +56,7 @@ func DefaultOptions() Options {
 	return Options{
 		Name:          "kubepkg",
 		Short:         "Package manager for Kubernetes platforms and distributions",
-		APIGroup:      v1beta1.GroupName,
+		APIGroup:      v1.GroupName,
 		IndexFetchers: repo.DefaultFetchers(),
 		Policy:        repo.AllowAll{},
 	}
@@ -79,7 +79,7 @@ func (c *cluster) client() (client.Client, error) {
 		return nil, err
 	}
 	scheme := runtime.NewScheme()
-	if err := v1beta1.AddToSchemeForGroup(c.apiGroup)(scheme); err != nil {
+	if err := v1.AddToSchemeForGroup(c.apiGroup)(scheme); err != nil {
 		return nil, err
 	}
 	if err := checkServed(cfg, c.apiGroup); err != nil {
@@ -105,12 +105,12 @@ func checkServed(cfg *rest.Config, group string) error {
 		}
 		var served []string
 		for _, v := range g.Versions {
-			if v.Version == v1beta1.Version {
+			if v.Version == v1.Version {
 				return nil
 			}
 			served = append(served, v.Version)
 		}
-		return fmt.Errorf("the cluster serves %s %s, an older kubepkg; this CLI needs %s/%s: upgrade kubepkg in the cluster (helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg), or use the CLI release that matches it", group, strings.Join(served, ", "), group, v1beta1.Version)
+		return fmt.Errorf("the cluster serves %s %s, an older kubepkg; this CLI needs %s/%s: upgrade kubepkg in the cluster (helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg), or use the CLI release that matches it", group, strings.Join(served, ", "), group, v1.Version)
 	}
 	return fmt.Errorf("the cluster does not serve %s: kubepkg is not installed there (helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace)", group)
 }

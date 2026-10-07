@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/bundle"
 	"github.com/tym83/kubepkg/pkg/controller"
 	"github.com/tym83/kubepkg/pkg/sbom"
@@ -134,13 +134,13 @@ func clusterPackages(ctx context.Context, cl *cluster) ([]sbom.Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	var list v1beta1.PackageList
+	var list v1.PackageList
 	if err := c.List(ctx, &list); err != nil {
 		return nil, err
 	}
 	var out []sbom.Package
 	for _, p := range list.Items {
-		src := &v1beta1.PackageSource{}
+		src := &v1.PackageSource{}
 		if err := c.Get(ctx, types.NamespacedName{Name: p.Name}, src); err != nil {
 			if client.IgnoreNotFound(err) == nil {
 				continue // nothing installed for it yet
@@ -149,7 +149,7 @@ func clusterPackages(ctx context.Context, cl *cluster) ([]sbom.Package, error) {
 		}
 		out = append(out, sbom.Package{
 			Name: p.Name, Version: src.Spec.Version, Build: src.Spec.Build,
-			Repository: src.Labels[v1beta1.LabelRepository], Digest: src.Annotations[controller.AnnotationSpecDigest],
+			Repository: src.Labels[v1.LabelRepository], Digest: src.Annotations[controller.AnnotationSpecDigest],
 			Spec: src.Spec, Variant: p.Spec.Variant,
 		})
 	}

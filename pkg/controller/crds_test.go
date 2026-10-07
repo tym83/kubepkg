@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 // withCRDs gives the env real CRD ownership over CRDs owned as given.
@@ -113,16 +113,16 @@ func TestACRDMovesToThePackageThatNowDeclaresIt(t *testing.T) {
 	gw.Spec.CRDs = []string{"gateways.gateway.networking.k8s.io"}
 	eg := mkSource("envoy-gateway", "1.0.0", true, "envoy")
 	eg.Spec.CRDs = []string{"gateways.gateway.networking.k8s.io"}
-	e.create(eg, gw, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "gateway-api"}})
+	e.create(eg, gw, &v1.Package{ObjectMeta: metav1.ObjectMeta{Name: "gateway-api"}})
 
 	// While envoy-gateway still declares them, they stay its own.
 	e.reconcile("gateway-api")
-	if c := meta.FindStatusCondition(e.pkg("gateway-api").Status.Conditions, "Ready"); c == nil || c.Reason != v1beta1.ReasonCRDOwnershipConflict {
+	if c := meta.FindStatusCondition(e.pkg("gateway-api").Status.Conditions, "Ready"); c == nil || c.Reason != v1.ReasonCRDOwnershipConflict {
 		t.Fatalf("while declared by envoy-gateway: %+v", c)
 	}
 
 	// envoy-gateway's chosen version stops declaring them.
-	eg = &v1beta1.PackageSource{}
+	eg = &v1.PackageSource{}
 	if err := e.c.Get(context.Background(), types.NamespacedName{Name: "envoy-gateway"}, eg); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestAVersionThatDropsACRDKeepsItAndDeletingThePackageReleasesIt(t *testing.
 	withCRDs(t, e, map[string]string{"widgets.example.org": "", "gadgets.example.org": ""})
 	src := mkSource("app", "1.0.0", true, "app")
 	src.Spec.CRDs = []string{"widgets.example.org", "gadgets.example.org"}
-	e.create(src, &v1beta1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
+	e.create(src, &v1.Package{ObjectMeta: metav1.ObjectMeta{Name: "app"}})
 	e.reconcile("app")
 	e.reconcile("app")
 	if a := crdAnnotations(t, e.c, "gadgets.example.org"); a[AnnotationOwnedBy] != "app" {
@@ -156,7 +156,7 @@ func TestAVersionThatDropsACRDKeepsItAndDeletingThePackageReleasesIt(t *testing.
 	}
 
 	// 1.1.0 no longer ships gadgets: its release would delete the CRD.
-	cur := &v1beta1.PackageSource{}
+	cur := &v1.PackageSource{}
 	if err := e.c.Get(context.Background(), types.NamespacedName{Name: "app"}, cur); err != nil {
 		t.Fatal(err)
 	}

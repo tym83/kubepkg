@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/api/meta"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 func listCmd(cl *cluster) *cobra.Command {
@@ -36,7 +36,7 @@ func listCmd(cl *cluster) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var pkgs v1beta1.PackageList
+			var pkgs v1.PackageList
 			if err := c.List(cmd.Context(), &pkgs); err != nil {
 				return err
 			}

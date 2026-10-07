@@ -36,7 +36,7 @@ const UnversionedVersion = "0.0.0-unversioned"
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,shortName={pks}
-// +kubebuilder:storageversion
+// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1beta1 is deprecated; use kubepkg.dev/v1"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Package version"
 // +kubebuilder:printcolumn:name="Build",type="integer",JSONPath=".spec.build",description="Packaging build of that version"

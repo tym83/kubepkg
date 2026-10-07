@@ -100,7 +100,7 @@ func writeAPI(dir, out string) error {
 	sort.Slice(crds, func(i, j int) bool { return crds[i].Spec.Names.Kind < crds[j].Spec.Names.Kind })
 	var b strings.Builder
 	b.WriteString("# API reference\n\nGenerated from the CRDs by `make docs`; do not edit.\n\n")
-	b.WriteString("All resources are cluster-scoped and served as `kubepkg.dev/v1beta1`, or under the group a platform chooses with `--api-group`. `v1alpha1` is still served, deprecated, with the same schema; see [API versions](api-versions.md).\n\n")
+	b.WriteString("All resources are cluster-scoped and served as `kubepkg.dev/v1`, or under the group a platform chooses with `--api-group`. `v1beta1` and `v1alpha1` are still served, deprecated, with the same schema; see [Compatibility](compatibility.md).\n\n")
 	for _, crd := range crds {
 		b.WriteString("- [" + crd.Spec.Names.Kind + "](#" + strings.ToLower(crd.Spec.Names.Kind) + ")\n")
 	}

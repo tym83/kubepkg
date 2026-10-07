@@ -1,6 +1,6 @@
 # Design
 
-This document specifies the `v1beta1` API and the behaviour of the operator and the CLI. The reasons behind the choices are in [rationale.md](rationale.md).
+This document specifies the `v1` API and the behaviour of the operator and the CLI. The reasons behind the choices are in [rationale.md](rationale.md).
 
 ## Scope
 
@@ -10,14 +10,14 @@ Out of scope, on the roadmap: delegated roles for parts of a repository (TUF tar
 
 ## Resources
 
-All resources are cluster-scoped, in the API group `kubepkg.dev`, version `v1beta1` (`v1alpha1` is still served, deprecated, with the same schema). A platform that embeds kubepkg may serve the same types under its own group (see [Embedding in a platform](#embedding-in-a-platform)).
+All resources are cluster-scoped, in the API group `kubepkg.dev`, version `v1` (`v1beta1` and `v1alpha1` are still served, deprecated, with the same schema). A platform that embeds kubepkg may serve the same types under its own group (see [Embedding in a platform](#embedding-in-a-platform)).
 
 ### PackageSource
 
 One package at one version: where its charts come from and how they are installed. The name is the package name.
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata:
   name: cert-manager
@@ -74,7 +74,7 @@ A missing `version` is treated as the unversioned version `0.0.0-unversioned`, w
 The desired state: this package is installed, in this variant, at a version matching this constraint. The name is the package name.
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata:
   name: cert-manager
@@ -106,7 +106,7 @@ status:
 An immutable record of one applied state of a package. Created by the operator; users read it, they do not write it.
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageRevision
 metadata:
   name: cert-manager-3
@@ -204,7 +204,7 @@ Packages in a repository are built by the repository's maintainers from upstream
 A recipe is a directory with `recipe.yaml` and whatever files the maintainers add:
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata:
   name: kubevirt
@@ -248,7 +248,7 @@ A distribution extends builds with plugins. A source `{plugin: git, with: {...}}
 A recipe with no charts builds a meta package: only requirements. A distribution is one such package listing its members and their versions:
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata:
   name: mydistro
@@ -282,7 +282,7 @@ recipes/
 `kubepkg repo index recipes -o index.yaml` turns them into the index:
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: RepositoryIndex
 packages:
   cert-manager:
@@ -338,7 +338,7 @@ A distribution adds checks of its own, such as signatures from its own key infra
 A cluster subscribes to repositories with `Repository` resources:
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Repository
 metadata:
   name: main
@@ -379,7 +379,7 @@ kubepkg cluster add edge-1 --kubeconfig edge-1.kubeconfig --label env=prod --lab
 ```
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSet
 metadata:
   name: base

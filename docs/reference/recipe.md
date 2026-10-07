@@ -3,7 +3,7 @@
 A recipe is `recipe.yaml` in a directory, read by `kubepkg init`, `validate` and `build`. Unknown fields are errors, so a typo fails the build instead of being ignored.
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata:
   name: <package name>

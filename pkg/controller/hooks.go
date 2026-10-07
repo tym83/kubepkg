@@ -25,7 +25,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/source"
 )
@@ -33,7 +33,7 @@ import (
 // runHooks runs the pre-upgrade hooks of a revision that moves the
 // package to another version. done means the reconcile stops here: a
 // hook is still running, or one failed and the revision with it.
-func (r *PackageReconciler) runHooks(ctx context.Context, pkg *v1beta1.Package, rev *v1beta1.PackageRevision, d *desiredState, revs *[]v1beta1.PackageRevision) (ctrl.Result, bool, error) {
+func (r *PackageReconciler) runHooks(ctx context.Context, pkg *v1.Package, rev *v1.PackageRevision, d *desiredState, revs *[]v1.PackageRevision) (ctrl.Result, bool, error) {
 	if len(d.hooks) == 0 || rev.Annotations[AnnotationHooksDone] == "true" || rev.Spec.RestoredFrom != 0 {
 		return ctrl.Result{}, false, nil
 	}
@@ -57,7 +57,7 @@ func (r *PackageReconciler) runHooks(ctx context.Context, pkg *v1beta1.Package, 
 			return res, true, ferr
 		}
 		if !s.Ready {
-			setReady(pkg, metav1.ConditionFalse, v1beta1.ReasonProgressing,
+			setReady(pkg, metav1.ConditionFalse, v1.ReasonProgressing,
 				fmt.Sprintf("applying revision %d: running pre-upgrade hook %s", rev.Spec.Revision, h.snapshot.Name))
 			return ctrl.Result{RequeueAfter: progressRequeue}, true, nil
 		}

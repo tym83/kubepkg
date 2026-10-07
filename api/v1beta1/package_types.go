@@ -47,7 +47,7 @@ const (
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,shortName={pkg,pkgs}
-// +kubebuilder:storageversion
+// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1beta1 is deprecated; use kubepkg.dev/v1"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Variant",type="string",JSONPath=".spec.variant",description="Selected variant"
 // +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".status.version",description="Applied version"

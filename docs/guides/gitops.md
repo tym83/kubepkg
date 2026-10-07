@@ -41,21 +41,21 @@ Rendered output is plain Flux, Argo CD or helmfile configuration. The operator i
 If you want GitOps **and** these, commit `Package` objects to Git instead and let the operator install them. Flux or Argo CD applies the `Package` manifests, and kubepkg does the rest:
 
 ```yaml title="clusters/prod/packages.yaml"
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata:
   name: virtualization
 spec:
   version: "~1.0"
 ---
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata:
   name: kubevirt
 spec:
   version: "~1.9"
 ---
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata:
   name: cdi

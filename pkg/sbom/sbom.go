@@ -31,7 +31,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/images"
 )
 
@@ -42,7 +42,7 @@ type Package struct {
 	// Repository names where the version came from; Digest is its spec
 	// digest in that repository's signed index.
 	Repository, Digest string
-	Spec               v1beta1.PackageSourceSpec
+	Spec               v1.PackageSourceSpec
 	// Variant picks the requirements to record; default when empty.
 	Variant string
 }

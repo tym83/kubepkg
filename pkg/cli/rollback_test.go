@@ -19,22 +19,22 @@ package cli
 import (
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
-func rev(n int64, phase string) v1beta1.PackageRevision {
-	return v1beta1.PackageRevision{
-		Spec:   v1beta1.PackageRevisionSpec{Revision: n},
-		Status: v1beta1.PackageRevisionStatus{Phase: phase},
+func rev(n int64, phase string) v1.PackageRevision {
+	return v1.PackageRevision{
+		Spec:   v1.PackageRevisionSpec{Revision: n},
+		Status: v1.PackageRevisionStatus{Phase: phase},
 	}
 }
 
 func TestPreviousApplied(t *testing.T) {
-	revs := []v1beta1.PackageRevision{
-		rev(1, v1beta1.PhaseSuperseded),
-		rev(2, v1beta1.PhaseFailed),
-		rev(4, v1beta1.PhaseApplied),
-		rev(3, v1beta1.PhaseSuperseded),
+	revs := []v1.PackageRevision{
+		rev(1, v1.PhaseSuperseded),
+		rev(2, v1.PhaseFailed),
+		rev(4, v1.PhaseApplied),
+		rev(3, v1.PhaseSuperseded),
 	}
 	cases := []struct {
 		current, want int64

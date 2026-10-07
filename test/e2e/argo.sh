@@ -56,7 +56,7 @@ start_operator --backend argo
 
 step "3. Argo CD installs the package"
 ${K} apply -f - <<EOF >/dev/null
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata: {name: pair}
 spec:
@@ -71,7 +71,7 @@ spec:
           chart: {repository: "${CHARTS}", name: hello, version: 1.0.0}
           install: {namespace: e2e-argo-second, releaseName: hello, dependsOn: [first]}
 ---
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: pair}
 spec:

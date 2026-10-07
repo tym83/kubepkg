@@ -29,7 +29,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/backend/argo"
 	"github.com/tym83/kubepkg/pkg/backend/flux"
@@ -237,7 +237,7 @@ func requiredPackages(r resolve.Release, providers map[string]string) []string {
 	return out
 }
 
-func admittedSpec(ctx context.Context, store *repo.Store, policy repo.Policy, name, version string) (*v1beta1.PackageSourceSpec, error) {
+func admittedSpec(ctx context.Context, store *repo.Store, policy repo.Policy, name, version string) (*v1.PackageSourceSpec, error) {
 	_, v, err := admittedVersion(ctx, store, policy, name, version)
 	if err != nil {
 		return nil, err
@@ -260,11 +260,11 @@ func admittedVersion(ctx context.Context, store *repo.Store, policy repo.Policy,
 // renderComponents describes a package's components the way the operator
 // would hand them to a backend, in apply order, and records its releases
 // for the packages that require it.
-func renderComponents(name string, spec *v1beta1.PackageSourceSpec, variant string, deps []string, releases map[string][]string) ([]backend.Component, error) {
+func renderComponents(name string, spec *v1.PackageSourceSpec, variant string, deps []string, releases map[string][]string) ([]backend.Component, error) {
 	if variant == "" {
 		variant = "default"
 	}
-	var v *v1beta1.Variant
+	var v *v1.Variant
 	for i := range spec.Variants {
 		if spec.Variants[i].Name == variant {
 			v = &spec.Variants[i]
@@ -273,8 +273,8 @@ func renderComponents(name string, spec *v1beta1.PackageSourceSpec, variant stri
 	if v == nil {
 		return nil, fmt.Errorf("package %s has no variant %s", name, variant)
 	}
-	var comps []v1beta1.Component
-	byName := map[string]v1beta1.Component{}
+	var comps []v1.Component
+	byName := map[string]v1.Component{}
 	for _, c := range v.Components {
 		if c.Install != nil {
 			comps = append(comps, c)
@@ -301,7 +301,7 @@ func renderComponents(name string, spec *v1beta1.PackageSourceSpec, variant stri
 			ReleaseName:      controller.ReleaseName(c),
 			Namespace:        c.Install.Namespace,
 			Chart:            &backend.Chart{Repository: c.Chart.Repository, Name: c.Chart.Name, Version: c.Chart.Version, Digest: c.Chart.Digest},
-			Labels:           map[string]string{v1beta1.LabelPackage: name},
+			Labels:           map[string]string{v1.LabelPackage: name},
 			UpgradeCRDs:      c.Install.UpgradeCRDs,
 			WaitStrategy:     c.Install.WaitStrategy,
 			HealthCheckExprs: controller.FluxHealthChecks(c.Install.HealthCheckExprs),

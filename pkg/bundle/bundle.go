@@ -40,7 +40,7 @@ import (
 	"oras.land/oras-go/v2/content/oci"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/build"
 	"github.com/tym83/kubepkg/pkg/images"
 	"github.com/tym83/kubepkg/pkg/repo"
@@ -120,7 +120,7 @@ type Image struct {
 // Source is a repository to take packages from, as a cluster would.
 type Source struct {
 	Name string
-	Spec v1beta1.RepositorySpec
+	Spec v1.RepositorySpec
 }
 
 // Recorded holds the repository files fetched while loading sources.
@@ -141,7 +141,7 @@ func Load(ctx context.Context, sources []Source, fetchers repo.Fetchers, now tim
 		for scheme, f := range fetchers {
 			recording[scheme] = recorder{inner: f, files: files}
 		}
-		idx, _, _, err := repo.LoadRepository(ctx, recording, s.Spec, v1beta1.RepositoryStatus{}, now)
+		idx, _, _, err := repo.LoadRepository(ctx, recording, s.Spec, v1.RepositoryStatus{}, now)
 		if err != nil {
 			return nil, nil, fmt.Errorf("repository %s: %w", s.Name, err)
 		}
@@ -190,7 +190,7 @@ func Create(ctx context.Context, dir string, rec *Recorded, sel []Selection, o C
 	if o.Warn == nil {
 		o.Warn = io.Discard
 	}
-	m := &Manifest{APIVersion: v1beta1.GroupVersion.String(), Kind: "Bundle", Created: metav1.NewTime(o.Now.UTC().Truncate(time.Second))}
+	m := &Manifest{APIVersion: v1.GroupVersion.String(), Kind: "Bundle", Created: metav1.NewTime(o.Now.UTC().Truncate(time.Second))}
 	used := map[string]bool{}
 	for _, s := range sel {
 		used[s.Repository] = true
@@ -469,7 +469,7 @@ type Verified struct {
 	Dir      string
 	Manifest *Manifest
 	// Specs are the signed specs of the bundle's packages, by name.
-	Specs map[string]v1beta1.PackageSourceSpec
+	Specs map[string]v1.PackageSourceSpec
 }
 
 // Verify checks a bundle against its repositories, trusted as trust says
@@ -477,7 +477,7 @@ type Verified struct {
 // the way a cluster would: signatures, roots and expiry. Every chart, tree
 // and image must be what the signed packages pin. Images found in charts
 // rather than pinned by a repository are refused unless allowUnpinned.
-func Verify(ctx context.Context, dir string, trust v1beta1.RepositorySpec, now time.Time, allowUnpinned bool) (*Verified, error) {
+func Verify(ctx context.Context, dir string, trust v1.RepositorySpec, now time.Time, allowUnpinned bool) (*Verified, error) {
 	m, err := Read(dir)
 	if err != nil {
 		return nil, err
@@ -487,18 +487,18 @@ func Verify(ctx context.Context, dir string, trust v1beta1.RepositorySpec, now t
 	}
 	indexes := map[string]*repo.Index{}
 	for _, r := range m.Repositories {
-		spec := v1beta1.RepositorySpec{URL: r.URL, Priority: r.Priority, PublicKeys: trust.PublicKeys, Trust: trust.Trust}
+		spec := v1.RepositorySpec{URL: r.URL, Priority: r.Priority, PublicKeys: trust.PublicKeys, Trust: trust.Trust}
 		u, err := url.Parse(r.URL)
 		if err != nil {
 			return nil, err
 		}
-		idx, _, _, err := repo.LoadRepository(ctx, repo.Fetchers{u.Scheme: fileFetchers{dir: dir, repo: r}}, spec, v1beta1.RepositoryStatus{}, now)
+		idx, _, _, err := repo.LoadRepository(ctx, repo.Fetchers{u.Scheme: fileFetchers{dir: dir, repo: r}}, spec, v1.RepositoryStatus{}, now)
 		if err != nil {
 			return nil, fmt.Errorf("repository %s: %w", r.Name, err)
 		}
 		indexes[r.Name] = idx
 	}
-	v := &Verified{Dir: dir, Manifest: m, Specs: map[string]v1beta1.PackageSourceSpec{}}
+	v := &Verified{Dir: dir, Manifest: m, Specs: map[string]v1.PackageSourceSpec{}}
 	wantCharts := map[string]bool{}
 	wantTrees := map[string]bool{}
 	pinnedBy := map[string][]string{} // image -> packages that pin it
@@ -507,7 +507,7 @@ func Verify(ctx context.Context, dir string, trust v1beta1.RepositorySpec, now t
 		if idx == nil {
 			return nil, fmt.Errorf("package %s comes from repository %s, which the bundle does not carry", p.Name, p.Repository)
 		}
-		var spec *v1beta1.PackageSourceSpec
+		var spec *v1.PackageSourceSpec
 		for _, ver := range idx.Packages[p.Name].Versions {
 			if ver.Digest == p.Digest {
 				spec = ver.Spec.DeepCopy()
