@@ -56,6 +56,9 @@ type Options struct {
 	WorkDir string
 	// Plugins extend the sources and steps a recipe can use.
 	Plugins Plugins
+	// VerifyImages checks the image signatures a recipe asks for; nil
+	// refuses recipes that ask.
+	VerifyImages ImageVerifier
 }
 
 // Result is a built package before publishing.

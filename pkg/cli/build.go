@@ -76,6 +76,14 @@ under the same version and build is an error.`,
 			if err != nil {
 				return err
 			}
+			// Upstream signatures are checked before anything is published.
+			unchecked, err := build.VerifyImages(cmd.Context(), res.Recipe, args[0], cosign())
+			if err != nil {
+				return err
+			}
+			if build.HasImageRules(res.Recipe) && len(unchecked) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: no signature rule covers %s\n", strings.Join(unchecked, ", "))
+			}
 			if registry == "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "built %s %s build %d in %s (not published: no --registry)\n",
 					res.Recipe.Metadata.Name, res.Recipe.Spec.Version, res.Recipe.Spec.Build, res.TreeDir)

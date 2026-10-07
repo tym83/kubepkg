@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/common/util"
@@ -93,6 +94,14 @@ func Validate(ctx context.Context, dir string, opts Options) Report {
 	}
 	checkImages(res, &rep)
 	checkCRDUpgrades(res, &rep)
+	if HasImageRules(res.Recipe) {
+		unchecked, err := VerifyImages(ctx, res.Recipe, dir, opts.VerifyImages)
+		if err != nil {
+			rep.Errors = append(rep.Errors, err.Error())
+		} else if len(unchecked) > 0 {
+			rep.Warnings = append(rep.Warnings, "no signature rule covers "+strings.Join(unchecked, ", "))
+		}
+	}
 	return rep
 }
 
