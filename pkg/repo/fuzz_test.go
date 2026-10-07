@@ -65,7 +65,7 @@ func FuzzParseRoot(f *testing.F) {
 		}
 		// Whatever was parsed can be checked without panicking.
 		_, _ = Bootstrap(sr, pubs(ks[0]), 1)
-		_ = sr.Signed.checkDelegations()
+		_ = sr.Signed.check()
 		idx := &Index{Packages: map[string]Package{"a-b": {Versions: []Version{{Version: "1.0.0"}}}}}
 		sr.Signed.applyDelegations(idx)
 	})
