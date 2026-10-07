@@ -154,7 +154,7 @@ kubepkg history <package>
 
 ## kubepkg images
 
-Print the images a recipe's package runs, pinned by digest
+Print the images a recipe's package runs, pinned by digest, or check a cluster's
 
 Images builds the recipe without publishing it, finds the images its
 charts run with their default values, adds those package.images already
@@ -164,9 +164,15 @@ package.images block to paste into the recipe. Images already pinned keep
 their digests; a published version whose images change needs a new build
 number.
 
-```text
-kubepkg images <recipe-dir> [flags]
+With --cluster, it checks what runs instead: every container in the
+namespaces packages install into, against the images the installed
+packages pin, as the image policy would. It lists what no package pins,
+by namespace and owner, and fails when there is any.
 
+```text
+kubepkg images <recipe-dir> | --cluster [flags]
+
+      --cluster                  check the images running in package namespaces against what the packages pin
       --plain-http               talk to registries without TLS (local registries only)
       --registry-config string   Docker config file with registry credentials
 ```

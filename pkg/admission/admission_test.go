@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -135,4 +136,29 @@ func readFile(t *testing.T, p string) string {
 		t.Fatal(err)
 	}
 	return string(raw)
+}
+
+func TestUnpinnedImagesLeaveAnEventOnTheOwner(t *testing.T) {
+	c := env(t, ns("soft", ModeWarn))
+	rec := events.NewFakeRecorder(4)
+	sch := runtime.NewScheme()
+	_ = corev1.AddToScheme(sch)
+	yes := true
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "soft",
+		OwnerReferences: []metav1.OwnerReference{{APIVersion: "apps/v1", Kind: "ReplicaSet", Name: "web-7d9", Controller: &yes}}}}
+	pod.Spec.Containers = []corev1.Container{{Name: "c", Image: "docker.io/evil/miner:latest"}}
+	raw, _ := json.Marshal(pod)
+	h := &Handler{Reader: c, Decoder: admission.NewDecoder(sch), Recorder: rec}
+	r := h.Handle(context.Background(), admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{Namespace: "soft", Object: runtime.RawExtension{Raw: raw}}})
+	if !r.Allowed {
+		t.Fatal("warn mode refused a pod")
+	}
+	select {
+	case e := <-rec.Events:
+		if !strings.Contains(e, "UnpinnedImage") || !strings.Contains(e, "docker.io/evil/miner:latest") {
+			t.Fatalf("event: %s", e)
+		}
+	default:
+		t.Fatal("no event")
+	}
 }

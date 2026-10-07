@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -99,6 +100,10 @@ type Handler struct {
 	// Reader reads PackageSources and Namespaces, from the cache.
 	Reader  client.Reader
 	Decoder admission.Decoder
+	// Recorder, when set, gets an Event on the pod's owner for every
+	// image no package pins. Admission warnings go back to whoever made
+	// the pod, usually a controller, so without Events nobody sees them.
+	Recorder events.EventRecorder
 }
 
 // Handle implements admission.Handler.
@@ -137,6 +142,7 @@ func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.R
 	fix(pod.Spec.Containers)
 	if len(unvouched) > 0 {
 		msg := fmt.Sprintf("no installed package pins %s", strings.Join(unvouched, ", "))
+		h.record(pod, req.Namespace, mode, msg)
 		if mode == ModeEnforce {
 			return admission.Denied(msg + "; namespace " + req.Namespace + " runs only images packages pin (" + LabelImagePolicy + "=enforce)")
 		}
@@ -156,4 +162,24 @@ func (h *Handler) patched(req admission.Request, pod *corev1.Pod, changed bool) 
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 	return admission.PatchResponseFromRaw(req.Object.Raw, raw)
+}
+
+// record puts an Event on the object that made the pod, or on the
+// namespace for a pod nothing owns.
+func (h *Handler) record(pod *corev1.Pod, namespace, mode, msg string) {
+	if h.Recorder == nil {
+		return
+	}
+	ref := &corev1.ObjectReference{APIVersion: "v1", Kind: "Namespace", Name: namespace}
+	for _, o := range pod.OwnerReferences {
+		if o.Controller != nil && *o.Controller {
+			ref = &corev1.ObjectReference{APIVersion: o.APIVersion, Kind: o.Kind, Name: o.Name, Namespace: namespace, UID: o.UID}
+			break
+		}
+	}
+	reason, action := "UnpinnedImage", "Warned"
+	if mode == ModeEnforce {
+		reason, action = "ImageRefused", "Refused"
+	}
+	h.Recorder.Eventf(ref, nil, corev1.EventTypeWarning, reason, action, "%s (%s=%s)", msg, LabelImagePolicy, mode)
 }
