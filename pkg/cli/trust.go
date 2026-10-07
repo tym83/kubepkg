@@ -18,6 +18,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -291,7 +292,11 @@ carries the signatures into the index.`,
 			if err != nil {
 				return err
 			}
-			if sr, err := repo.ParseRoot(raw); err == nil {
+			sr, err := repo.ParseRoot(raw)
+			if errors.Is(err, repo.ErrNewerFormat) {
+				return err
+			}
+			if err == nil {
 				if err := repo.SignRoot(sr, key); err != nil {
 					return err
 				}

@@ -351,8 +351,17 @@ func ParseRoot(raw []byte) (*SignedRoot, error) {
 	if sr.Signed.Version < 1 {
 		return nil, errors.New("not a root")
 	}
+	// A root is signed as this release re-encodes it, so a field it does
+	// not know would only surface as signatures that do not verify. Say
+	// what it is instead.
+	if err := yaml.UnmarshalStrict(raw, &SignedRoot{}); err != nil && strings.Contains(err.Error(), "unknown field") {
+		return nil, fmt.Errorf("%w: root version %d uses features this kubepkg does not know (%v); upgrade kubepkg", ErrNewerFormat, sr.Signed.Version, err)
+	}
 	return &sr, nil
 }
+
+// ErrNewerFormat is returned for repository files made for a newer kubepkg.
+var ErrNewerFormat = errors.New("made for a newer kubepkg")
 
 // Trust is what a client pins: the first root's keys and threshold, and
 // the root version it accepted last, so a root cannot be rolled back.
