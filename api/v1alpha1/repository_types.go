@@ -44,8 +44,9 @@ type RepositorySpec struct {
 	Interval *metav1.Duration `json:"interval,omitempty"`
 
 	// PublicKeys are PEM encoded ed25519 keys the index must be signed
-	// with: the signature is fetched from the index URL plus ".sig". With
-	// none, the index is not checked. Several keys allow rotation.
+	// with: the signature is fetched from the index URL plus ".sig".
+	// Several keys allow rotation. A repository with neither publicKeys
+	// nor trust is refused unless allowUnsigned is set.
 	// +optional
 	PublicKeys []string `json:"publicKeys,omitempty"`
 
@@ -56,6 +57,11 @@ type RepositorySpec struct {
 	// instead of publicKeys for threshold signing and key rotation.
 	// +optional
 	Trust *RepositoryTrust `json:"trust,omitempty"`
+
+	// AllowUnsigned accepts an index nobody signed, for local testing. Its
+	// packages then install whatever the server says they are.
+	// +optional
+	AllowUnsigned bool `json:"allowUnsigned,omitempty"`
 }
 
 // RepositoryTrust pins a repository's root of trust.

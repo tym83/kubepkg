@@ -29,6 +29,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
+
+	"github.com/tym83/kubepkg/api/v1beta1"
 )
 
 type keypair struct{ priv, pub []byte }
@@ -267,5 +269,32 @@ func TestPlainSignaturesEverywhere(t *testing.T) {
 	s.files["mem://r/index.yaml"+SignatureSuffix] = again
 	if _, err := s.load(Trust{RootKeys: pubs(r...), RootThreshold: 1}); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("the same key as plain and as listed counted twice: %v", err)
+	}
+}
+
+func TestUnsignedRepositoriesNeedConsent(t *testing.T) {
+	s := newRepoServer()
+	s.publishIndex(t, time.Time{})
+	spec := v1beta1.RepositorySpec{URL: "mem://r/index.yaml"}
+	if _, _, _, err := LoadRepository(context.Background(), Fetchers{"mem": s.files}, spec, v1beta1.RepositoryStatus{}, s.now); !errors.Is(err, ErrBadSignature) {
+		t.Fatalf("an unsigned repository without allowUnsigned: %v", err)
+	}
+	spec.AllowUnsigned = true
+	if _, _, _, err := LoadRepository(context.Background(), Fetchers{"mem": s.files}, spec, v1beta1.RepositoryStatus{}, s.now); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestARootCannotCountOneKeyTwice(t *testing.T) {
+	ks := keys(t, 2)
+	sr := signedRoot(t, 1, ks[:1], 1, ks[1:], 1, time.Now().Add(time.Hour))
+	// The index key listed again under another ID, threshold 2.
+	sr.Signed.Keys["0000"] = sr.Signed.Keys[sr.Signed.Roles[RoleIndex].KeyIDs[0]]
+	sr.Signed.Roles[RoleIndex] = Role{KeyIDs: append(sr.Signed.Roles[RoleIndex].KeyIDs, "0000"), Threshold: 2}
+	if err := SignRoot(sr, ks[0].priv); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Bootstrap(sr, pubs(ks[0]), 1); !errors.Is(err, ErrBadSignature) {
+		t.Fatalf("a key under a made-up ID: %v", err)
 	}
 }

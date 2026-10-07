@@ -62,6 +62,11 @@ spec:
               RepositorySpec says where a repository index is and how much to trust
               it relative to other repositories.
             properties:
+              allowUnsigned:
+                description: |-
+                  AllowUnsigned accepts an index nobody signed, for local testing. Its
+                  packages then install whatever the server says they are.
+                type: boolean
               interval:
                 description: Interval between index refreshes. Default 10m.
                 type: string
@@ -75,8 +80,9 @@ spec:
               publicKeys:
                 description: |-
                   PublicKeys are PEM encoded ed25519 keys the index must be signed
-                  with: the signature is fetched from the index URL plus ".sig". With
-                  none, the index is not checked. Several keys allow rotation.
+                  with: the signature is fetched from the index URL plus ".sig".
+                  Several keys allow rotation. A repository with neither publicKeys
+                  nor trust is refused unless allowUnsigned is set.
                 items:
                   type: string
                 type: array
@@ -246,6 +252,11 @@ spec:
               RepositorySpec says where a repository index is and how much to trust
               it relative to other repositories.
             properties:
+              allowUnsigned:
+                description: |-
+                  AllowUnsigned accepts an index nobody signed, for local testing. Its
+                  packages then install whatever the server says they are.
+                type: boolean
               interval:
                 description: Interval between index refreshes. Default 10m.
                 type: string
@@ -259,8 +270,9 @@ spec:
               publicKeys:
                 description: |-
                   PublicKeys are PEM encoded ed25519 keys the index must be signed
-                  with: the signature is fetched from the index URL plus ".sig". With
-                  none, the index is not checked. Several keys allow rotation.
+                  with: the signature is fetched from the index URL plus ".sig".
+                  Several keys allow rotation. A repository with neither publicKeys
+                  nor trust is refused unless allowUnsigned is set.
                 items:
                   type: string
                 type: array

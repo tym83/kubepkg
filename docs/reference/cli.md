@@ -75,6 +75,7 @@ those unless told to accept them.
 ```text
 kubepkg bundle create <package>[@constraint]... -o <file.tar> [flags]
 
+      --allow-unsigned           accept an index nobody signed, for local testing
   -o, --output string            bundle file to write
       --plain-http               talk to registries without TLS (local registries only)
       --public-key stringArray   trust indexes signed with this ed25519 public key file (repeatable)
@@ -102,6 +103,7 @@ containerd and Talos settings that send image pulls to the mirror.
 kubepkg bundle import <file.tar> --mirror oci://<registry>/<path> --public-key <file> [flags]
 
       --allow-unpinned-images    accept images that only the bundle pins, not a signed package
+      --allow-unsigned           accept an index nobody signed, for local testing
       --mirror string            oci:// registry path to copy into, the operator's mirror
       --node-config string       directory for containerd hosts.toml files and a Talos patch that send image pulls to the mirror
       --plain-http               talk to the mirror registry without TLS
@@ -298,10 +300,11 @@ Subscribe the cluster to a package repository
 ```text
 kubepkg repo add <name> <index-url> [flags]
 
+      --allow-unsigned           accept an index nobody signed, for local testing
       --interval duration        how often the operator refreshes the index (default 10m)
       --priority int32           the highest priority repository carrying a package supplies it
-      --public-key stringArray   trust only an index signed with this ed25519 public key file (repeatable)
-      --root-key stringArray     pin this root key of a repository with a root of trust (repeatable)
+      --public-key stringArray   trust indexes signed with this ed25519 public key file (repeatable)
+      --root-key stringArray     trust a repository with a root of trust through this pinned root key file (repeatable)
       --root-threshold int32     how many pinned root keys must have signed version 1 of the root (default 1)
 ```
 
@@ -383,6 +386,7 @@ a package that pins none lists only its charts.
 ```text
 kubepkg sbom (<package>[@constraint]... | --cluster) [-o file] [flags]
 
+      --allow-unsigned           accept an index nobody signed, for local testing
       --cluster                  describe the packages the cluster runs
   -o, --output string            file to write (default: standard output)
       --public-key stringArray   trust indexes signed with this ed25519 public key file (repeatable)
@@ -407,6 +411,7 @@ offline. --fail-on makes it exit non-zero at a severity, for CI.
 ```text
 kubepkg scan (<package>[@constraint]... | --cluster) [flags]
 
+      --allow-unsigned           accept an index nobody signed, for local testing
       --cluster                  scan the packages the cluster runs
       --fail-on string           exit non-zero when an image has a vulnerability of this severity or worse: CRITICAL, HIGH, MEDIUM, LOW
       --mirror string            oci:// mirror to scan the copies in instead of the original registries

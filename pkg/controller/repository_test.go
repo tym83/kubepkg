@@ -97,7 +97,7 @@ func (e *repoEnv) source(name string) *v1beta1.PackageSource {
 }
 
 func repository(name, url string, priority int32) *v1beta1.Repository {
-	return &v1beta1.Repository{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1beta1.RepositorySpec{URL: url, Priority: priority}}
+	return &v1beta1.Repository{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: v1beta1.RepositorySpec{URL: url, Priority: priority, AllowUnsigned: true}}
 }
 
 func reason(p *v1beta1.Package) (string, string) {

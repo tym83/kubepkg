@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -37,9 +36,7 @@ func repoAddCmd(cl *cluster) *cobra.Command {
 	var (
 		priority int32
 		interval time.Duration
-		keyFiles []string
-		rootKeys []string
-		rootTh   int32
+		trust    trustFlags
 	)
 	cmd := &cobra.Command{
 		Use:   "add <name> <index-url>",
@@ -50,22 +47,11 @@ func repoAddCmd(cl *cluster) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var keys []string
-			for _, f := range keyFiles {
-				raw, err := os.ReadFile(f)
-				if err != nil {
-					return err
-				}
-				keys = append(keys, string(raw))
+			spec, err := trust.spec()
+			if err != nil {
+				return err
 			}
-			spec := v1beta1.RepositorySpec{URL: args[1], Priority: priority, PublicKeys: keys}
-			if len(rootKeys) > 0 {
-				rk, err := readKeys(rootKeys)
-				if err != nil {
-					return err
-				}
-				spec.Trust = &v1beta1.RepositoryTrust{RootKeys: rk, RootThreshold: rootTh}
-			}
+			spec.URL, spec.Priority = args[1], priority
 			if _, _, _, err := repo.LoadRepository(cmd.Context(), cl.fetchers, spec, v1beta1.RepositoryStatus{}, time.Now()); err != nil {
 				return fmt.Errorf("index at %s: %w", args[1], err)
 			}
@@ -82,9 +68,7 @@ func repoAddCmd(cl *cluster) *cobra.Command {
 	}
 	cmd.Flags().Int32Var(&priority, "priority", 0, "the highest priority repository carrying a package supplies it")
 	cmd.Flags().DurationVar(&interval, "interval", 0, "how often the operator refreshes the index (default 10m)")
-	cmd.Flags().StringArrayVar(&keyFiles, "public-key", nil, "trust only an index signed with this ed25519 public key file (repeatable)")
-	cmd.Flags().StringArrayVar(&rootKeys, "root-key", nil, "pin this root key of a repository with a root of trust (repeatable)")
-	cmd.Flags().Int32Var(&rootTh, "root-threshold", 1, "how many pinned root keys must have signed version 1 of the root")
+	trust.bind(cmd)
 	return cmd
 }
 

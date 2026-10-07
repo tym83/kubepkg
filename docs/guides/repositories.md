@@ -95,6 +95,8 @@ kubepkg repo add main https://packages.example.org/index.yaml --public-key relea
 
 Keep `release.key` out of the repository. In CI, pass it as a secret with `--sign-key-env`.
 
+A repository with no keys at all is refused. For a local test repository, accept it explicitly with `--allow-unsigned` (`allowUnsigned: true` in the Repository or in the chart's `repositories`). Its packages then install whatever the server says they are.
+
 This mode is enough for a small repository. Its limits are those of a single key: anyone holding it can sign anything, and replacing it means touching every cluster.
 
 ## A root of trust
