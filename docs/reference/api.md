@@ -134,9 +134,10 @@ Short names: `pkgset`.
 | `repositories` | []object | Repositories are written to every selected cluster first. |
 | `repositories[].name` | string, required |  |
 | `repositories[].spec` | object, required | RepositorySpec says where a repository index is and how much to trust it relative to other repositories. |
+| `repositories[].spec.allowUnsigned` | boolean | AllowUnsigned accepts an index nobody signed, for local testing. Its packages then install whatever the server says they are. |
 | `repositories[].spec.interval` | string | Interval between index refreshes. Default 10m. |
 | `repositories[].spec.priority` | integer | Priority orders repositories that carry the same package: the highest priority one shadows the others for that package, whatever versions they have. Default 0. |
-| `repositories[].spec.publicKeys` | []string | PublicKeys are PEM encoded ed25519 keys the index must be signed with: the signature is fetched from the index URL plus ".sig". With none, the index is not checked. Several keys allow rotation. |
+| `repositories[].spec.publicKeys` | []string | PublicKeys are PEM encoded ed25519 keys the index must be signed with: the signature is fetched from the index URL plus ".sig". Several keys allow rotation. A repository with neither publicKeys nor trust is refused unless allowUnsigned is set. |
 | `repositories[].spec.trust` | object | Trust verifies the repository the way TUF does: the root keys pinned here sign root/1.yaml, each later root version is signed by enough root keys of the one before and of itself, the current root names the keys and threshold the index needs, and both expire. Use it instead of publicKeys for threshold signing and key rotation. |
 | `repositories[].spec.trust.rootKeys` | []string, required | RootKeys are PEM encoded ed25519 keys of version 1 of the root. |
 | `repositories[].spec.trust.rootThreshold` | integer | RootThreshold is how many of them must have signed it. Default 1. |
@@ -260,9 +261,10 @@ Short names: `pkgrepo`.
 
 | Field | Type | Description |
 |---|---|---|
+| `allowUnsigned` | boolean | AllowUnsigned accepts an index nobody signed, for local testing. Its packages then install whatever the server says they are. |
 | `interval` | string | Interval between index refreshes. Default 10m. |
 | `priority` | integer | Priority orders repositories that carry the same package: the highest priority one shadows the others for that package, whatever versions they have. Default 0. |
-| `publicKeys` | []string | PublicKeys are PEM encoded ed25519 keys the index must be signed with: the signature is fetched from the index URL plus ".sig". With none, the index is not checked. Several keys allow rotation. |
+| `publicKeys` | []string | PublicKeys are PEM encoded ed25519 keys the index must be signed with: the signature is fetched from the index URL plus ".sig". Several keys allow rotation. A repository with neither publicKeys nor trust is refused unless allowUnsigned is set. |
 | `trust` | object | Trust verifies the repository the way TUF does: the root keys pinned here sign root/1.yaml, each later root version is signed by enough root keys of the one before and of itself, the current root names the keys and threshold the index needs, and both expire. Use it instead of publicKeys for threshold signing and key rotation. |
 | `trust.rootKeys` | []string, required | RootKeys are PEM encoded ed25519 keys of version 1 of the root. |
 | `trust.rootThreshold` | integer | RootThreshold is how many of them must have signed it. Default 1. |

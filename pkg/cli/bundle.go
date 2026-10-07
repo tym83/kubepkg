@@ -41,17 +41,19 @@ import (
 type trustFlags struct {
 	publicKeys, rootKeys []string
 	rootThreshold        int32
+	allowUnsigned        bool
 }
 
 func (t *trustFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&t.publicKeys, "public-key", nil, "trust indexes signed with this ed25519 public key file (repeatable)")
 	cmd.Flags().StringArrayVar(&t.rootKeys, "root-key", nil, "trust a repository with a root of trust through this pinned root key file (repeatable)")
 	cmd.Flags().Int32Var(&t.rootThreshold, "root-threshold", 1, "how many pinned root keys must have signed version 1 of the root")
+	cmd.Flags().BoolVar(&t.allowUnsigned, "allow-unsigned", false, "accept an index nobody signed, for local testing")
 }
 
 // spec fills the trust part of a repository spec from key files.
 func (t *trustFlags) spec() (v1beta1.RepositorySpec, error) {
-	var s v1beta1.RepositorySpec
+	s := v1beta1.RepositorySpec{AllowUnsigned: t.allowUnsigned}
 	read := func(files []string) ([]string, error) {
 		var out []string
 		for _, f := range files {

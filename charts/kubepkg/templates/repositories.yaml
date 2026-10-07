@@ -24,4 +24,7 @@ spec:
   {{- with .trust }}
   trust: {{- toYaml . | nindent 4 }}
   {{- end }}
+  {{- if .allowUnsigned }}
+  allowUnsigned: true
+  {{- end }}
 {{- end }}

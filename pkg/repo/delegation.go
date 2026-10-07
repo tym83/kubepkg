@@ -81,6 +81,22 @@ func (r *Root) Delegate(name string, packages, keys []string, threshold int) err
 	return r.checkDelegations()
 }
 
+// check refuses a root that names a key under an ID that is not its own,
+// which would let one key count twice towards a threshold, or whose
+// delegations cannot be applied.
+func (r Root) check() error {
+	for id, k := range r.Keys {
+		got, err := KeyID(k)
+		if err != nil {
+			return fmt.Errorf("key %s: %w", id, err)
+		}
+		if got != id {
+			return fmt.Errorf("key listed as %s is %s", id, got)
+		}
+	}
+	return r.checkDelegations()
+}
+
 // checkDelegations refuses a root whose delegations cannot be applied.
 func (r Root) checkDelegations() error {
 	for _, d := range r.Delegations {

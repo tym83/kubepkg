@@ -289,7 +289,7 @@ func Bootstrap(sr *SignedRoot, pinned []string, threshold int) (*TrustedRoot, er
 	if err := meets(data, sr.Signatures, sr.Signed.Keys, sr.Signed.Roles[RoleRoot], "root version 1"); err != nil {
 		return nil, err
 	}
-	if err := sr.Signed.checkDelegations(); err != nil {
+	if err := sr.Signed.check(); err != nil {
 		return nil, fmt.Errorf("%w: root version 1: %v", ErrBadSignature, err)
 	}
 	return &TrustedRoot{Root: sr.Signed}, nil
@@ -311,7 +311,7 @@ func (t *TrustedRoot) Update(next *SignedRoot) error {
 	if err := meets(data, next.Signatures, next.Signed.Keys, next.Signed.Roles[RoleRoot], fmt.Sprintf("root version %d (by its own keys)", next.Signed.Version)); err != nil {
 		return err
 	}
-	if err := next.Signed.checkDelegations(); err != nil {
+	if err := next.Signed.check(); err != nil {
 		return fmt.Errorf("%w: root version %d: %v", ErrBadSignature, next.Signed.Version, err)
 	}
 	t.Root = next.Signed
@@ -474,6 +474,9 @@ func LoadRepository(ctx context.Context, fetchers Fetchers, spec v1beta1.Reposit
 		trust = Trust{RootKeys: t.RootKeys, RootThreshold: int(t.RootThreshold), RootVersion: int(status.RootVersion), RootDigest: status.RootDigest}
 		idx, raw, trust, err = LoadIndexWithRoot(ctx, fetchers, spec.URL, trust, now)
 	} else {
+		if len(spec.PublicKeys) == 0 && !spec.AllowUnsigned {
+			return nil, nil, trust, fmt.Errorf("%w: the repository gives no keys to check its index with; set publicKeys or trust, or allowUnsigned to accept an unsigned index", ErrBadSignature)
+		}
 		idx, raw, err = LoadIndex(ctx, fetchers, spec.URL, spec.PublicKeys)
 	}
 	if err != nil {
