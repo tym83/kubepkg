@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -157,11 +156,8 @@ func loadStore(ctx context.Context, c client.Client, fetchers repo.Fetchers, war
 			fmt.Fprintf(warn, "warning: repository %s left out: %v\n", r.Name, err)
 			continue
 		}
-		if len(idx.Untrusted) > 0 {
-			fmt.Fprintf(warn, "warning: repository %s has versions their delegation did not sign, left out: %s\n", r.Name, strings.Join(idx.Untrusted, ", "))
-		}
-		if len(idx.Unknown) > 0 {
-			fmt.Fprintf(warn, "warning: repository %s has versions for a newer kubepkg, left out: %s\n", r.Name, strings.Join(idx.Unknown, ", "))
+		for _, note := range idx.LeftOut() {
+			fmt.Fprintf(warn, "warning: repository %s has %s\n", r.Name, note)
 		}
 		store.Set(r.Name, r.Spec.Priority, idx)
 	}

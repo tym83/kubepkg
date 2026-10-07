@@ -84,6 +84,19 @@ type Index struct {
 	Untrusted []string `json:"-"`
 }
 
+// LeftOut describes the versions a client left out of the index, for
+// warnings.
+func (idx *Index) LeftOut() []string {
+	var out []string
+	if len(idx.Untrusted) > 0 {
+		out = append(out, "versions their delegation did not sign, left out: "+strings.Join(idx.Untrusted, ", "))
+	}
+	if len(idx.Unknown) > 0 {
+		out = append(out, "versions for a newer kubepkg, left out: "+strings.Join(idx.Unknown, ", "))
+	}
+	return out
+}
+
 // Package is every published version of one package.
 type Package struct {
 	Description string `json:"description,omitempty"`

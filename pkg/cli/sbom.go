@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -75,7 +76,7 @@ a package that pins none lists only its charts.`,
 			case len(args) == 0:
 				return errors.New("give packages, or --cluster for what the cluster runs")
 			default:
-				pkgs, err = resolvedPackages(ctx, cl, repos, trust, args, variant)
+				pkgs, err = resolvedPackages(ctx, cl, repos, trust, args, variant, cmd.ErrOrStderr())
 			}
 			if err != nil {
 				return err
@@ -102,12 +103,12 @@ a package that pins none lists only its charts.`,
 
 // resolvedPackages resolves packages and their requirements for an empty
 // cluster and returns them as signed in their repositories.
-func resolvedPackages(ctx context.Context, cl *cluster, repos []string, trust trustFlags, args []string, variant string) ([]sbom.Package, error) {
+func resolvedPackages(ctx context.Context, cl *cluster, repos []string, trust trustFlags, args []string, variant string, warn io.Writer) ([]sbom.Package, error) {
 	sources, err := repoSources(ctx, cl, repos, trust)
 	if err != nil {
 		return nil, err
 	}
-	store, _, err := bundle.Load(ctx, sources, cl.fetchers, time.Now())
+	store, _, err := bundle.Load(ctx, sources, cl.fetchers, time.Now(), warn)
 	if err != nil {
 		return nil, err
 	}

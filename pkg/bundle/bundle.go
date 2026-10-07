@@ -129,8 +129,9 @@ type Recorded struct {
 }
 
 // Load loads the sources with the same checks a cluster applies, signatures
-// and roots included, and records every file it fetched.
-func Load(ctx context.Context, sources []Source, fetchers repo.Fetchers, now time.Time) (*repo.Store, *Recorded, error) {
+// and roots included, and records every file it fetched. Versions left out
+// of an index are reported to warn.
+func Load(ctx context.Context, sources []Source, fetchers repo.Fetchers, now time.Time, warn io.Writer) (*repo.Store, *Recorded, error) {
 	store := repo.NewStore()
 	rec := &Recorded{sources: sources, files: map[string]map[string][]byte{}}
 	for _, s := range sources {
@@ -142,6 +143,9 @@ func Load(ctx context.Context, sources []Source, fetchers repo.Fetchers, now tim
 		idx, _, _, err := repo.LoadRepository(ctx, recording, s.Spec, v1beta1.RepositoryStatus{}, now)
 		if err != nil {
 			return nil, nil, fmt.Errorf("repository %s: %w", s.Name, err)
+		}
+		for _, note := range idx.LeftOut() {
+			fmt.Fprintf(warn, "warning: repository %s has %s\n", s.Name, note)
 		}
 		store.Set(s.Name, s.Spec.Priority, idx)
 		rec.files[s.Name] = files
