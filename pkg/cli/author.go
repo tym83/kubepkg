@@ -19,6 +19,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -198,7 +199,7 @@ is searched for recipes below it.`,
 				if err != nil {
 					return err
 				}
-				rep := build.Validate(cmd.Context(), d, build.Options{Fetcher: f, WorkDir: work})
+				rep := build.Validate(cmd.Context(), d, build.Options{Fetcher: f, WorkDir: work, VerifyImages: cosign()})
 				os.RemoveAll(work)
 				status := "ok"
 				if !rep.OK() {
@@ -245,4 +246,13 @@ func recipeDirs(args []string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// cosign verifies image signatures when the cosign executable is there;
+// recipes that ask for verification are refused without it.
+func cosign() build.ImageVerifier {
+	if _, err := exec.LookPath("cosign"); err != nil {
+		return nil
+	}
+	return build.CosignVerifier("cosign")
 }

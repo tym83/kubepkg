@@ -26,7 +26,24 @@ spec:
 | `build` | int | numbers your packagings of that version; raise it whenever the built content changes. Of two builds of one version, the higher is newer |
 | `sources` | map of Source | the upstream inputs, by name |
 | `charts` | map of Chart | the charts built into the package, by name; empty for a meta package |
+| `verify` | Verify | how the maintainers check the upstream: image signatures, checked at validate and build time |
 | `package` | [PackageSourceSpec](api.md#packagesource) | what the operator installs. Components refer to built charts by `path: <chart name>`. `version`, `build` and the chart digests are filled in by the build |
+
+## Verify
+
+| Field | Type | Description |
+|---|---|---|
+| `images` | list of ImageSignature | signatures the pinned images must carry, checked with `cosign verify` by digest |
+
+### ImageSignature
+
+| Field | Type | Description |
+|---|---|---|
+| `repositories` | list of string, required | image repositories the rule covers, `registry/path`, with `*` standing for one path element |
+| `key` | string | a public key file next to the recipe |
+| `identity`, `issuer` | string | a keyless signature: the certificate subject and its OIDC issuer; give both, or a key |
+| `signatureDigest` | string | `sha384` or `sha512` when the upstream does not sign sha256 digests |
+| `ignoreTransparencyLog` | bool | accept signatures not recorded in a transparency log; only with a key |
 
 ## Source
 

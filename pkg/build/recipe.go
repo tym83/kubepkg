@@ -65,6 +65,39 @@ type RecipeSpec struct {
 	// charts by path; version, build and sourceRef are filled in by the
 	// build.
 	Package v1beta1.PackageSourceSpec `json:"package"`
+	// Verify says how the maintainers check what the upstream publishes,
+	// the way a Debian package checks the upstream's signing key: it runs
+	// when the recipe is validated and built, and the repository's own
+	// signature vouches for the result from then on.
+	Verify *Verify `json:"verify,omitempty"`
+}
+
+// Verify lists the checks a recipe makes on its upstream.
+type Verify struct {
+	// Images are the signatures the pinned images must carry, checked
+	// with cosign by digest.
+	Images []ImageSignature `json:"images,omitempty"`
+}
+
+// ImageSignature is how the images of some repositories are signed:
+// with a key, or keyless by an identity that an OIDC issuer vouched for.
+type ImageSignature struct {
+	// Repositories the rule covers, registry/path, with * standing for
+	// one path element: quay.io/jetstack/*.
+	Repositories []string `json:"repositories"`
+	// Key is a public key file next to the recipe.
+	Key string `json:"key,omitempty"`
+	// Identity and Issuer check a keyless signature: the certificate's
+	// subject and the OIDC issuer that vouched for it.
+	Identity string `json:"identity,omitempty"`
+	Issuer   string `json:"issuer,omitempty"`
+	// SignatureDigest is the digest the upstream signs with, when it is
+	// not sha256: sha384 or sha512.
+	SignatureDigest string `json:"signatureDigest,omitempty"`
+	// IgnoreTransparencyLog accepts signatures the upstream does not
+	// record in a transparency log, for upstreams that sign that way,
+	// such as cert-manager. The key alone then vouches for them.
+	IgnoreTransparencyLog bool `json:"ignoreTransparencyLog,omitempty"`
 }
 
 // Source is one upstream input. Exactly one of URL, Chart, Dir and Plugin

@@ -105,6 +105,31 @@ A chart is made either from **one chart source**, used as is, or from **manifest
 
 `package` is the `PackageSource` spec the operator installs: `provides`, `conflicts`, `crds`, `permissions`, `rollback` and `variants` with their components. Components refer to built charts by `path`, the chart's name under `charts`. The build fills in the version and the digests. See [Upgrades, readiness and hooks](upgrades.md) for `dependsOn`, `readyWhen`, `phase: PreUpgrade` and `rollback.safe`, and the [recipe reference](../reference/recipe.md) for every field.
 
+## Checking upstream signatures
+
+Many upstreams sign their container images with [cosign](https://docs.sigstore.dev/). A recipe can require it, the way a Debian package checks the upstream's signing key:
+
+```yaml
+spec:
+  verify:
+    images:
+      # signed by the cert-manager maintainers with a key they publish
+      - repositories: [quay.io/jetstack/*]
+        key: keys/cert-manager-pubkey-2021-09-20.pem
+        signatureDigest: sha512
+        ignoreTransparencyLog: true
+      # signed keyless by Kubernetes release engineering
+      - repositories: [registry.k8s.io/*/*]
+        identity: krel-trust@k8s-releng-prod.iam.gserviceaccount.com
+        issuer: https://accounts.google.com
+```
+
+`kubepkg validate` and `kubepkg build` run `cosign verify` on every pinned image a rule covers, by digest, and fail on an image that is not signed as the rule says. That happens before anything is published. From then on, the repository's own signature vouches for the package, so clusters do not need cosign or network access to the upstream's keys. Images no rule covers are reported, so an unsigned upstream stays visible.
+
+- `key` is a public key file next to the recipe; `identity` and `issuer` check a keyless signature: the certificate's subject and the OIDC issuer that vouched for it.
+- `signatureDigest` and `ignoreTransparencyLog` follow the upstream's own instructions. cert-manager, for example, signs with a key in Google Cloud KMS and records nothing in the Rekor transparency log. A keyless rule cannot skip the log: only the log proves the short-lived certificate was valid when the image was signed.
+- `cosign` must be on `PATH` wherever a recipe with rules is validated or built; without it the recipe is refused rather than built unchecked.
+
 ## Validating
 
 ```bash
