@@ -58,6 +58,7 @@ nav:
       - "Backends: Helm, werf, Flux, Argo CD": guides/backends.md
       - GitOps without the operator: guides/gitops.md
       - Air-gapped clusters: guides/airgap.md
+      - "Supply chain: SBOMs and vulnerabilities": guides/supply-chain.md
       - Several clusters: guides/multi-cluster.md
       - Monitoring: guides/observability.md
       - Embedding in a platform: guides/embedding.md

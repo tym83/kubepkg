@@ -1,0 +1,18 @@
+$ kubepkg scan virtualization --repo https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub
+PACKAGE   IMAGE                                             CRITICAL  HIGH  MEDIUM  LOW  UNKNOWN
+cdi       quay.io/kubevirt/cdi-apiserver:v1.66.1            1         21    12      1    0
+cdi       quay.io/kubevirt/cdi-cloner:v1.66.1               1         21    12      1    0
+cdi       quay.io/kubevirt/cdi-controller:v1.66.1           1         21    12      1    0
+cdi       quay.io/kubevirt/cdi-importer:v1.66.1             1         21    12      1    0
+cdi       quay.io/kubevirt/cdi-operator:v1.66.1             1         21    12      1    0
+cdi       quay.io/kubevirt/cdi-uploadproxy:v1.66.1          1         21    12      1    0
+cdi       quay.io/kubevirt/cdi-uploadserver:v1.66.1         1         21    12      1    0
+kubevirt  quay.io/kubevirt/virt-api:v1.9.0                  0         10    22      14   1
+kubevirt  quay.io/kubevirt/virt-controller:v1.9.0           0         10    22      14   1
+kubevirt  quay.io/kubevirt/virt-exportproxy:v1.9.0          0         10    22      14   1
+kubevirt  quay.io/kubevirt/virt-exportserver:v1.9.0         0         9     1       0    0
+kubevirt  quay.io/kubevirt/virt-handler:v1.9.0              0         9     1       0    0
+kubevirt  quay.io/kubevirt/virt-launcher:v1.9.0             0         9     1       0    0
+kubevirt  quay.io/kubevirt/virt-operator:v1.9.0             0         10    22      14   1
+kubevirt  quay.io/kubevirt/virt-template-apiserver:v0.2.2   1         38    20      2    2
+kubevirt  quay.io/kubevirt/virt-template-controller:v0.2.2  1         28    14      2    1
