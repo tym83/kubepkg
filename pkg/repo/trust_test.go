@@ -298,3 +298,16 @@ func TestARootCannotCountOneKeyTwice(t *testing.T) {
 		t.Fatalf("a key under a made-up ID: %v", err)
 	}
 }
+
+func TestARootFromANewerKubepkgSaysSo(t *testing.T) {
+	ks := keys(t, 1)
+	sr := signedRoot(t, 1, ks, 1, ks, 1, time.Now().Add(time.Hour), ks[0])
+	raw, err := yaml.Marshal(sr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = bytes.Replace(raw, []byte("signed:\n"), []byte("signed:\n  mirrors: [{url: x}]\n"), 1)
+	if _, err := ParseRoot(raw); !errors.Is(err, ErrNewerFormat) || !strings.Contains(err.Error(), "mirrors") {
+		t.Fatalf("a root with a field this release does not know: %v", err)
+	}
+}
