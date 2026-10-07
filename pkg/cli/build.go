@@ -77,6 +77,9 @@ under the same version and build is an error.`,
 				return err
 			}
 			// Upstream signatures are checked before anything is published.
+			if err := build.VerifyCharts(cmd.Context(), res.Recipe, args[0], fetcher); err != nil {
+				return err
+			}
 			unchecked, err := build.VerifyImages(cmd.Context(), res.Recipe, args[0], cosign())
 			if err != nil {
 				return err

@@ -94,6 +94,9 @@ func Validate(ctx context.Context, dir string, opts Options) Report {
 	}
 	checkImages(res, &rep)
 	checkCRDUpgrades(res, &rep)
+	if err := VerifyCharts(ctx, res.Recipe, dir, opts.Fetcher); err != nil {
+		rep.Errors = append(rep.Errors, err.Error())
+	}
 	if HasImageRules(res.Recipe) {
 		unchecked, err := VerifyImages(ctx, res.Recipe, dir, opts.VerifyImages)
 		if err != nil {
