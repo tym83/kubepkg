@@ -180,7 +180,7 @@ offline. --fail-on makes it exit non-zero at a severity, for CI.`,
 			case len(args) == 0:
 				return errors.New("give packages, or --cluster for what the cluster runs")
 			default:
-				pkgs, err = resolvedPackages(ctx, cl, repos, trust, args, variant)
+				pkgs, err = resolvedPackages(ctx, cl, repos, trust, args, variant, cmd.ErrOrStderr())
 			}
 			if err != nil {
 				return err

@@ -223,7 +223,7 @@ func makeBundle(t *testing.T, f fixture) string {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now()
-	_, rec, err := Load(ctx, []Source{{Name: "main", Spec: v1beta1.RepositorySpec{URL: f.indexURL, PublicKeys: []string{string(f.pub)}}}}, repo.DefaultFetchers(), now)
+	_, rec, err := Load(ctx, []Source{{Name: "main", Spec: v1beta1.RepositorySpec{URL: f.indexURL, PublicKeys: []string{string(f.pub)}}}}, repo.DefaultFetchers(), now, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

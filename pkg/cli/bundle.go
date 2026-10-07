@@ -155,7 +155,7 @@ those unless told to accept them.`,
 			if err != nil {
 				return err
 			}
-			store, rec, err := bundle.Load(ctx, sources, cl.fetchers, time.Now())
+			store, rec, err := bundle.Load(ctx, sources, cl.fetchers, time.Now(), cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
