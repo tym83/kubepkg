@@ -18,6 +18,7 @@ package cli
 
 import (
 	"archive/tar"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -76,6 +77,44 @@ func (t *trustFlags) spec() (v1beta1.RepositorySpec, error) {
 	return s, nil
 }
 
+// repoSources are the repositories to take packages from: the --repo
+// indexes, highest priority first, trusted with the given keys, or else
+// the cluster's repositories.
+func repoSources(ctx context.Context, cl *cluster, repos []string, trust trustFlags) ([]bundle.Source, error) {
+	var sources []bundle.Source
+	if len(repos) > 0 {
+		spec, err := trust.spec()
+		if err != nil {
+			return nil, err
+		}
+		for i, u := range repos {
+			s := spec
+			s.URL, s.Priority = u, int32(len(repos)-i)
+			name := fmt.Sprintf("repo%d", i+1)
+			if len(repos) == 1 {
+				name = "main"
+			}
+			sources = append(sources, bundle.Source{Name: name, Spec: s})
+		}
+	} else {
+		c, err := cl.client()
+		if err != nil {
+			return nil, err
+		}
+		var list v1beta1.RepositoryList
+		if err := c.List(ctx, &list); err != nil {
+			return nil, err
+		}
+		for _, r := range list.Items {
+			sources = append(sources, bundle.Source{Name: r.Name, Spec: r.Spec})
+		}
+	}
+	if len(sources) == 0 {
+		return nil, errors.New("no repositories: give --repo or add one to the cluster")
+	}
+	return sources, nil
+}
+
 func bundleCmd(cl *cluster) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bundle",
@@ -112,39 +151,11 @@ those unless told to accept them.`,
 				return errors.New("give the bundle file with -o")
 			}
 			ctx := cmd.Context()
-			var sources []bundle.Source
-			if len(repos) > 0 {
-				spec, err := trust.spec()
-				if err != nil {
-					return err
-				}
-				for i, u := range repos {
-					s := spec
-					s.URL, s.Priority = u, int32(len(repos)-i)
-					name := fmt.Sprintf("repo%d", i+1)
-					if len(repos) == 1 {
-						name = "main"
-					}
-					sources = append(sources, bundle.Source{Name: name, Spec: s})
-				}
-			} else {
-				c, err := cl.client()
-				if err != nil {
-					return err
-				}
-				var list v1beta1.RepositoryList
-				if err := c.List(ctx, &list); err != nil {
-					return err
-				}
-				for _, r := range list.Items {
-					sources = append(sources, bundle.Source{Name: r.Name, Spec: r.Spec})
-				}
+			sources, err := repoSources(ctx, cl, repos, trust)
+			if err != nil {
+				return err
 			}
-			if len(sources) == 0 {
-				return errors.New("no repositories: give --repo or add one to the cluster")
-			}
-			fetchers := cl.fetchers
-			store, rec, err := bundle.Load(ctx, sources, fetchers, time.Now())
+			store, rec, err := bundle.Load(ctx, sources, cl.fetchers, time.Now())
 			if err != nil {
 				return err
 			}

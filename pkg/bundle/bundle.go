@@ -43,12 +43,16 @@ import (
 	"github.com/tym83/kubepkg/pkg/build"
 	"github.com/tym83/kubepkg/pkg/images"
 	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/tym83/kubepkg/pkg/sbom"
 	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/tym83/kubepkg/pkg/version"
 )
 
 // Layout of a bundle directory.
 const (
-	ManifestFile    = "bundle.yaml"
+	ManifestFile = "bundle.yaml"
+	// SBOMFile is a CycloneDX description of the bundle\'s packages.
+	SBOMFile        = "sbom.cdx.json"
 	repositoriesDir = "repositories"
 	chartsDir       = "charts"
 	layoutDir       = "oci"
@@ -265,6 +269,17 @@ func Create(ctx context.Context, dir string, rec *Recorded, sel []Selection, o C
 	}
 	for _, r := range sortedKeys(imgs) {
 		m.Images = append(m.Images, *imgs[r])
+	}
+	var described []sbom.Package
+	for _, sl := range sel {
+		described = append(described, sbom.Package{Name: sl.Name, Version: sl.Version.Version, Build: sl.Version.Build, Repository: sl.Repository, Digest: sl.Version.Digest, Spec: sl.Version.Spec})
+	}
+	doc, err := sbom.CycloneDX(described, sbom.Options{ToolVersion: version.Version, Timestamp: m.Created.Time, Name: "bundle"})
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, SBOMFile), doc, 0o644); err != nil {
+		return nil, err
 	}
 	raw, err := yaml.Marshal(m)
 	if err != nil {

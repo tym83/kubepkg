@@ -369,6 +369,56 @@ kubepkg rollback <package> [flags]
       --to int   revision to re-apply
 ```
 
+## kubepkg sbom
+
+Write a CycloneDX software bill of materials for packages or a cluster
+
+Sbom describes packages as a CycloneDX 1.6 document: every package,
+the Helm charts and container images it installs, each pinned by digest,
+and which packages require which. With package names it resolves them and
+their requirements from the repositories, as install would; with --cluster
+it describes what the cluster runs now. Images are those the packages pin;
+a package that pins none lists only its charts.
+
+```text
+kubepkg sbom (<package>[@constraint]... | --cluster) [-o file] [flags]
+
+      --cluster                  describe the packages the cluster runs
+  -o, --output string            file to write (default: standard output)
+      --public-key stringArray   trust indexes signed with this ed25519 public key file (repeatable)
+      --repo stringArray         repository index URL, highest priority first (repeatable; default: the cluster's repositories)
+      --root-key stringArray     trust a repository with a root of trust through this pinned root key file (repeatable)
+      --root-threshold int32     how many pinned root keys must have signed version 1 of the root (default 1)
+      --timestamp string         RFC 3339 time to record instead of now, for reproducible documents
+      --variant string           variant whose requirements are resolved (default: default)
+```
+
+## kubepkg scan
+
+Report the known vulnerabilities of the images packages run
+
+Scan runs trivy on every container image the packages pin, by digest,
+and reports the vulnerabilities by severity, per package and image. Like
+sbom, it resolves packages and their requirements from the repositories,
+or with --cluster scans what the cluster runs. With --mirror it scans the
+copies in an air-gapped mirror; trivy then needs its database available
+offline. --fail-on makes it exit non-zero at a severity, for CI.
+
+```text
+kubepkg scan (<package>[@constraint]... | --cluster) [flags]
+
+      --cluster                  scan the packages the cluster runs
+      --fail-on string           exit non-zero when an image has a vulnerability of this severity or worse: CRITICAL, HIGH, MEDIUM, LOW
+      --mirror string            oci:// mirror to scan the copies in instead of the original registries
+      --public-key stringArray   trust indexes signed with this ed25519 public key file (repeatable)
+      --repo stringArray         repository index URL, highest priority first (repeatable; default: the cluster's repositories)
+      --root-key stringArray     trust a repository with a root of trust through this pinned root key file (repeatable)
+      --root-threshold int32     how many pinned root keys must have signed version 1 of the root (default 1)
+      --trivy string             trivy executable (default "trivy")
+      --trivy-arg stringArray    extra argument for trivy image, e.g. --skip-db-update (repeatable)
+      --variant string           variant whose requirements are resolved (default: default)
+```
+
 ## kubepkg search
 
 Search the packages in the cluster's repositories
