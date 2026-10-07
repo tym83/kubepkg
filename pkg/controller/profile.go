@@ -33,6 +33,9 @@ type Profile struct {
 	ValuesSecret string
 	// NamespaceLabels are put on every namespace the packages create.
 	NamespaceLabels map[string]string
+	// ImagePolicy is off, warn or enforce: whether package namespaces get
+	// the label that turns the image admission webhook on there.
+	ImagePolicy string
 }
 
 // Annotations kubepkg reads and writes.

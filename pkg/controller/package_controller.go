@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/pkg/admission"
 	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/resolve"
 )
@@ -812,7 +813,7 @@ func (r *PackageReconciler) reconcileNamespaces(ctx context.Context, pkg *v1beta
 	for n := range left {
 		all[n] = false
 	}
-	privileged, err := r.privilegedNamespaces(ctx, all)
+	privileged, unpinned, err := r.namespaceFacts(ctx, all)
 	if err != nil {
 		return err
 	}
@@ -839,6 +840,9 @@ func (r *PackageReconciler) reconcileNamespaces(ctx context.Context, pkg *v1beta
 		} else if err := r.unprivilege(ctx, n); err != nil {
 			return fmt.Errorf("namespace %s: %w", n, err)
 		}
+		if err := r.setImagePolicy(ctx, n, labels, unpinned[n]); err != nil {
+			return fmt.Errorf("namespace %s: %w", n, err)
+		}
 		if err := r.ensureNamespace(ctx, n, labels); err != nil {
 			return fmt.Errorf("namespace %s: %w", n, err)
 		}
@@ -852,6 +856,30 @@ const (
 	// set, so it is the only one kubepkg ever takes away.
 	annotationPodSecurity = "kubepkg.dev/pod-security"
 )
+
+// setImagePolicy puts the image policy label in labels, or takes it off
+// the namespace when the policy is off. A namespace where some package
+// pins no images gets warn, since enforce would refuse its pods.
+func (r *PackageReconciler) setImagePolicy(ctx context.Context, name string, labels map[string]string, unpinned bool) error {
+	mode := r.Profile.ImagePolicy
+	if mode == "" || mode == admission.ModeOff {
+		ns := &corev1.Namespace{}
+		if err := r.Get(ctx, types.NamespacedName{Name: name}, ns); err != nil {
+			return client.IgnoreNotFound(err)
+		}
+		if _, ok := ns.Labels[admission.LabelImagePolicy]; !ok {
+			return nil
+		}
+		patch := client.MergeFrom(ns.DeepCopy())
+		delete(ns.Labels, admission.LabelImagePolicy)
+		return r.Patch(ctx, ns, patch)
+	}
+	if unpinned && mode == admission.ModeEnforce {
+		mode = admission.ModeWarn
+	}
+	labels[admission.LabelImagePolicy] = mode
+	return nil
+}
 
 // unprivilege takes away a privileged level kubepkg set on a namespace
 // that no longer runs privileged components; one set by anybody else
@@ -913,13 +941,22 @@ func (r *PackageReconciler) ensureNamespace(ctx context.Context, name string, la
 }
 
 func (r *PackageReconciler) privilegedNamespaces(ctx context.Context, targets map[string]bool) (map[string]bool, error) {
+	out, _, err := r.namespaceFacts(ctx, targets)
+	return out, err
+}
+
+// namespaceFacts tells, for each target namespace, whether any package
+// runs a privileged component there, and whether any package with
+// components there pins no images.
+func (r *PackageReconciler) namespaceFacts(ctx context.Context, targets map[string]bool) (privileged, unpinned map[string]bool, err error) {
+	unpinned = map[string]bool{}
 	out := map[string]bool{}
 	for n, p := range targets {
 		out[n] = p
 	}
 	var pkgs v1beta1.PackageList
 	if err := r.List(ctx, &pkgs); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for i := range pkgs.Items {
 		p := &pkgs.Items[i]
@@ -933,12 +970,18 @@ func (r *PackageReconciler) privilegedNamespaces(ctx context.Context, targets ma
 		}
 		for _, c := range enabledComponents(p, v) {
 			ns, _ := placement(p, c)
-			if _, relevant := targets[ns]; relevant && c.Install.Privileged {
+			if _, relevant := targets[ns]; !relevant {
+				continue
+			}
+			if c.Install.Privileged {
 				out[ns] = true
+			}
+			if len(src.Spec.Images) == 0 {
+				unpinned[ns] = true
 			}
 		}
 	}
-	return out, nil
+	return out, unpinned, nil
 }
 
 // SetupWithManager wires the watches. Any Package change re-queues the

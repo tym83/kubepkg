@@ -23,8 +23,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	"os"
 	"path/filepath"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	ctradmission "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sort"
 	"strings"
 
@@ -40,6 +43,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/pkg/admission"
 	"github.com/tym83/kubepkg/pkg/backend"
 	"github.com/tym83/kubepkg/pkg/backend/argo"
 	"github.com/tym83/kubepkg/pkg/backend/flux"
@@ -82,6 +86,12 @@ type Options struct {
 	// air-gapped clusters; kubepkg bundle import fills it.
 	Mirror string
 
+	// Webhook settings for the image policy (Profile.ImagePolicy): the
+	// Service in front of the operator, its namespace, the Secret for the
+	// serving certificate and the MutatingWebhookConfiguration.
+	WebhookPort                                                    int
+	WebhookService, WebhookNamespace, WebhookSecret, WebhookConfig string
+
 	// NelmBinary is the nelm executable (werf backend).
 	NelmBinary string
 
@@ -104,16 +114,18 @@ type Options struct {
 // backends.
 func DefaultOptions() *Options {
 	return &Options{
-		Profile:       controller.DefaultProfile(),
-		Backend:       "helm",
-		Backends:      map[string]BackendFactory{"helm": HelmBackend, "flux": FluxBackend, "argo": ArgoBackend, "werf": WerfBackend},
-		AddToScheme:   []func(*runtime.Scheme) error{helmv2.AddToScheme},
-		IndexFetchers: repo.DefaultFetchers(),
-		Policy:        repo.AllowAll{},
-		CacheDir:      filepath.Join(os.TempDir(), "kubepkg"),
-		NelmBinary:    "nelm",
-		MetricsAddr:   ":8080",
-		ProbeAddr:     ":8081",
+		Profile:        controller.DefaultProfile(),
+		Backend:        "helm",
+		Backends:       map[string]BackendFactory{"helm": HelmBackend, "flux": FluxBackend, "argo": ArgoBackend, "werf": WerfBackend},
+		AddToScheme:    []func(*runtime.Scheme) error{helmv2.AddToScheme},
+		IndexFetchers:  repo.DefaultFetchers(),
+		Policy:         repo.AllowAll{},
+		CacheDir:       filepath.Join(os.TempDir(), "kubepkg"),
+		NelmBinary:     "nelm",
+		WebhookPort:    9443,
+		WebhookService: "kubepkg-webhook", WebhookSecret: "kubepkg-webhook-tls", WebhookConfig: "kubepkg-images",
+		MetricsAddr: ":8080",
+		ProbeAddr:   ":8081",
 	}
 }
 
@@ -132,6 +144,12 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.ArgoNamespace, "argo-namespace", o.ArgoNamespace, "namespace Argo CD watches for Applications (argo backend, default argocd)")
 	fs.StringVar(&o.ArgoProject, "argo-project", o.ArgoProject, "Argo CD project of the Applications (argo backend, default default)")
 	fs.StringVar(&o.Mirror, "mirror", o.Mirror, "oci:// registry path to fetch every chart and package tree from, for air-gapped clusters")
+	fs.StringVar(&o.Profile.ImagePolicy, "image-policy", admission.ModeOff, "off, warn or enforce: keep pods in package namespaces on the images their packages pin")
+	fs.IntVar(&o.WebhookPort, "webhook-port", o.WebhookPort, "port of the image policy webhook")
+	fs.StringVar(&o.WebhookService, "webhook-service", o.WebhookService, "Service in front of the image policy webhook")
+	fs.StringVar(&o.WebhookNamespace, "webhook-namespace", os.Getenv("POD_NAMESPACE"), "namespace of that Service and of the certificate Secret")
+	fs.StringVar(&o.WebhookSecret, "webhook-secret", o.WebhookSecret, "Secret for the webhook's serving certificate")
+	fs.StringVar(&o.WebhookConfig, "webhook-config", o.WebhookConfig, "MutatingWebhookConfiguration to give the CA bundle")
 	fs.StringVar(&o.NelmBinary, "nelm-binary", o.NelmBinary, "nelm executable (werf backend)")
 	fs.StringVar(&o.CacheDir, "cache-dir", o.CacheDir, "where package trees and charts are kept (helm backend)")
 	fs.StringVar(&o.RegistryConfig, "registry-config", o.RegistryConfig, "Docker config file with registry credentials")
@@ -197,7 +215,7 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 		return fmt.Errorf("unknown backend %q", o.Backend)
 	}
 	scheme := runtime.NewScheme()
-	adds := append([]func(*runtime.Scheme) error{corev1.AddToScheme, v1beta1.AddToSchemeForGroup(o.Profile.Group)}, o.AddToScheme...)
+	adds := append([]func(*runtime.Scheme) error{corev1.AddToScheme, admissionregistrationv1.AddToScheme, v1beta1.AddToSchemeForGroup(o.Profile.Group)}, o.AddToScheme...)
 	for _, add := range adds {
 		if err := add(scheme); err != nil {
 			return err
@@ -207,7 +225,33 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 	if id == "" {
 		id = filepath.Base(os.Args[0]) + "." + o.Profile.Group
 	}
+	if o.Profile.ImagePolicy == "" {
+		o.Profile.ImagePolicy = admission.ModeOff
+	}
+	var certs *admission.Certs
+	var webhookServer webhook.Server
+	switch o.Profile.ImagePolicy {
+	case admission.ModeOff:
+	case admission.ModeWarn, admission.ModeEnforce:
+		if o.WebhookNamespace == "" {
+			return fmt.Errorf("--image-policy %s needs --webhook-namespace (or POD_NAMESPACE)", o.Profile.ImagePolicy)
+		}
+		direct, err := client.New(cfg, client.Options{Scheme: scheme})
+		if err != nil {
+			return err
+		}
+		certs = &admission.Certs{Client: direct, Namespace: o.WebhookNamespace, Service: o.WebhookService,
+			Secret: o.WebhookSecret, Dir: filepath.Join(o.CacheDir, "webhook-certs"), Webhook: o.WebhookConfig}
+		// The certificate must exist before the webhook server starts.
+		if err := certs.Ensure(ctx); err != nil {
+			return fmt.Errorf("webhook certificate: %w", err)
+		}
+		webhookServer = webhook.NewServer(webhook.Options{Port: o.WebhookPort, CertDir: certs.Dir})
+	default:
+		return fmt.Errorf("--image-policy %q: off, warn or enforce", o.Profile.ImagePolicy)
+	}
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		WebhookServer:          webhookServer,
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: o.MetricsAddr},
 		HealthProbeBindAddress: o.ProbeAddr,
@@ -249,6 +293,15 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 	}
 	if err := (&controller.PackageSetReconciler{Client: mgr.GetClient(), Members: members}).SetupWithManager(mgr); err != nil {
 		return err
+	}
+	if certs != nil {
+		mgr.GetWebhookServer().Register("/mutate-pods", &webhook.Admission{Handler: &admission.Handler{Reader: mgr.GetClient(), Decoder: ctradmission.NewDecoder(scheme)}})
+		if err := mgr.Add(certs); err != nil {
+			return err
+		}
+		if err := mgr.AddReadyzCheck("webhook", mgr.GetWebhookServer().StartedChecker()); err != nil {
+			return err
+		}
 	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		return err

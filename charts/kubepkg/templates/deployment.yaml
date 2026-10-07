@@ -46,12 +46,24 @@ spec:
             {{- if .Values.plainHTTP }}
             - --plain-http
             {{- end }}
+            {{- $policy := .Values.imagePolicy | default "off" }}
+            {{- if ne $policy "off" }}
+            - --image-policy={{ $policy }}
+            - --webhook-service={{ .Release.Name }}-webhook
+            - --webhook-secret={{ .Release.Name }}-webhook-tls
+            - --webhook-config={{ .Release.Name }}-images
+            {{- end }}
           env:
             # Helm keeps its own files under HOME; the root filesystem is read-only.
             - {name: HOME, value: /tmp}
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
           ports:
             - {name: metrics, containerPort: 8080}
             - {name: probes, containerPort: 8081}
+            {{- if ne $policy "off" }}
+            - {name: webhook, containerPort: 9443}
+            {{- end }}
           livenessProbe:
             httpGet: {path: /healthz, port: probes}
           readinessProbe:
