@@ -35,7 +35,7 @@ import (
 
 type keypair struct{ priv, pub []byte }
 
-func keys(t *testing.T, n int) []keypair {
+func keys(t testing.TB, n int) []keypair {
 	t.Helper()
 	var out []keypair
 	for i := 0; i < n; i++ {

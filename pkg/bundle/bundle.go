@@ -30,6 +30,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -395,6 +396,32 @@ func safePath(root, rel string) (string, error) {
 	return filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(clean, "/"))), nil
 }
 
+var (
+	nameRE   = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+	digestRE = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+)
+
+// check refuses manifest entries that become file paths and are not what
+// kubepkg writes: the manifest comes with the bundle and is not signed.
+func (m *Manifest) check() error {
+	for _, r := range m.Repositories {
+		if !nameRE.MatchString(r.Name) {
+			return fmt.Errorf("repository name %q", r.Name)
+		}
+	}
+	for _, p := range m.Packages {
+		if !digestRE.MatchString(p.Digest) {
+			return fmt.Errorf("package %s: digest %q", p.Name, p.Digest)
+		}
+	}
+	for _, c := range m.Charts {
+		if !digestRE.MatchString(c.Digest) {
+			return fmt.Errorf("chart %s: digest %q", c.Name, c.Digest)
+		}
+	}
+	return nil
+}
+
 // Read loads a bundle's manifest from dir.
 func Read(dir string) (*Manifest, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, ManifestFile))
@@ -407,6 +434,9 @@ func Read(dir string) (*Manifest, error) {
 	}
 	if m.Kind != "Bundle" {
 		return nil, fmt.Errorf("%s is not a kubepkg bundle", dir)
+	}
+	if err := m.check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", ManifestFile, err)
 	}
 	return &m, nil
 }

@@ -1,0 +1,37 @@
+name: fuzz
+
+# Indexes, roots, signatures and bundles come from outside. Their seeds run
+# with every go test; this explores further, nightly, and keeps any input
+# that breaks something as an artifact to add to testdata/fuzz.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {pkg: ./pkg/repo, name: FuzzParse}
+          - {pkg: ./pkg/repo, name: FuzzParseRoot}
+          - {pkg: ./pkg/repo, name: FuzzSignatures}
+          - {pkg: ./pkg/bundle, name: FuzzSafePath}
+          - {pkg: ./pkg/bundle, name: FuzzUnpack}
+          - {pkg: ./pkg/bundle, name: FuzzManifest}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ${{ matrix.target.pkg }} -run '^$' -fuzz '^${{ matrix.target.name }}$' -fuzztime 10m
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target.name }}
+          path: pkg/*/testdata/fuzz
