@@ -121,6 +121,16 @@ func Import(ctx context.Context, v *Verified, o ImportOptions) (*ImportResult, e
 	}
 	sort.Strings(res.Registries)
 	if o.SiteDir != "" {
+		// The bill of materials goes next to the repositories, as the
+		// record of what entered the air gap.
+		if raw, err := os.ReadFile(filepath.Join(v.Dir, SBOMFile)); err == nil {
+			if err := os.MkdirAll(o.SiteDir, 0o755); err != nil {
+				return nil, err
+			}
+			if err := os.WriteFile(filepath.Join(o.SiteDir, SBOMFile), raw, 0o644); err != nil {
+				return nil, err
+			}
+		}
 		for _, r := range v.Manifest.Repositories {
 			for _, f := range r.Files {
 				src, err := safePath(filepath.Join(v.Dir, repositoriesDir, r.Name), f)

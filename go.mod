@@ -8,6 +8,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/fluxcd/helm-controller/api v1.5.1
 	github.com/fluxcd/pkg/apis/kustomize v1.15.0
+	github.com/google/uuid v1.6.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/prometheus/client_golang v1.24.0
@@ -71,7 +72,6 @@ require (
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gosuri/uitable v0.0.4 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/ianlancetaylor/demangle v0.0.0-20240805132620-81f5be970eca // indirect

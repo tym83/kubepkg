@@ -369,6 +369,30 @@ kubepkg rollback <package> [flags]
       --to int   revision to re-apply
 ```
 
+## kubepkg sbom
+
+Write a CycloneDX software bill of materials for packages or a cluster
+
+Sbom describes packages as a CycloneDX 1.6 document: every package,
+the Helm charts and container images it installs, each pinned by digest,
+and which packages require which. With package names it resolves them and
+their requirements from the repositories, as install would; with --cluster
+it describes what the cluster runs now. Images are those the packages pin;
+a package that pins none lists only its charts.
+
+```text
+kubepkg sbom (<package>[@constraint]... | --cluster) [-o file] [flags]
+
+      --cluster                  describe the packages the cluster runs
+  -o, --output string            file to write (default: standard output)
+      --public-key stringArray   trust indexes signed with this ed25519 public key file (repeatable)
+      --repo stringArray         repository index URL, highest priority first (repeatable; default: the cluster's repositories)
+      --root-key stringArray     trust a repository with a root of trust through this pinned root key file (repeatable)
+      --root-threshold int32     how many pinned root keys must have signed version 1 of the root (default 1)
+      --timestamp string         RFC 3339 time to record instead of now, for reproducible documents
+      --variant string           variant whose requirements are resolved (default: default)
+```
+
 ## kubepkg search
 
 Search the packages in the cluster's repositories

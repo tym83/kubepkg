@@ -279,6 +279,10 @@ func TestBundleRoundTripIntoAMirror(t *testing.T) {
 	if desc, err := mirrored.Resolve(ctx, tag); err != nil || desc.Digest.String() != want {
 		t.Fatalf("mirrored image: %v %v", desc.Digest, err)
 	}
+	// The bill of materials came across with the bundle.
+	if raw, err := os.ReadFile(filepath.Join(site, SBOMFile)); err != nil || !strings.Contains(string(raw), `"bomFormat": "CycloneDX"`) || !strings.Contains(string(raw), repoName) {
+		t.Fatalf("SBOM at the site: %v", err)
+	}
 	// The site serves the signed index unchanged.
 	idx, _, err := repo.LoadIndex(ctx, repo.Fetchers{"file": fileOnly{}}, "file://"+filepath.Join(site, "main", "index.yaml"), []string{string(f.pub)})
 	if err != nil || len(idx.Packages["app"].Versions) != 1 {
