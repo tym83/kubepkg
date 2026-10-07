@@ -34,7 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 // RecipeKind is the kind of a recipe document.
@@ -64,7 +64,7 @@ type RecipeSpec struct {
 	// Package is the PackageSource spec. Its components refer to built
 	// charts by path; version, build and sourceRef are filled in by the
 	// build.
-	Package v1beta1.PackageSourceSpec `json:"package"`
+	Package v1.PackageSourceSpec `json:"package"`
 	// Verify says how the maintainers check what the upstream publishes,
 	// the way a Debian package checks the upstream's signing key: it runs
 	// when the recipe is validated and built, and the repository's own
@@ -121,7 +121,7 @@ type Source struct {
 	// Path selects a file or directory inside an archive.
 	Path string `json:"path,omitempty"`
 	// Chart is a published Helm chart; it is pinned by digest.
-	Chart *v1beta1.ChartRef `json:"chart,omitempty"`
+	Chart *v1.ChartRef `json:"chart,omitempty"`
 	// Dir is a directory next to the recipe, for charts we maintain.
 	Dir string `json:"dir,omitempty"`
 	// Plugin fetches the source with a source plugin, e.g. from git or an

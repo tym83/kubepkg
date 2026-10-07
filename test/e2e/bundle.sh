@@ -36,7 +36,7 @@ spec:
       containers: [{name: web, image: registry.k8s.io/pause:3.10}]
 EOF
 cat > "${WORK}/recipes/web/recipe.yaml" <<'EOF'
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata:
   name: web

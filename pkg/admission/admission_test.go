@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 var digest = "sha256:" + strings.Repeat("d", 64)
@@ -41,12 +41,12 @@ var digest = "sha256:" + strings.Repeat("d", 64)
 func env(t *testing.T, objs ...client.Object) client.Client {
 	t.Helper()
 	sch := runtime.NewScheme()
-	for _, add := range []func(*runtime.Scheme) error{corev1.AddToScheme, v1beta1.AddToScheme, admissionregistrationv1.AddToScheme} {
+	for _, add := range []func(*runtime.Scheme) error{corev1.AddToScheme, v1.AddToScheme, admissionregistrationv1.AddToScheme} {
 		if err := add(sch); err != nil {
 			t.Fatal(err)
 		}
 	}
-	src := &v1beta1.PackageSource{ObjectMeta: metav1.ObjectMeta{Name: "cert-manager"}, Spec: v1beta1.PackageSourceSpec{Images: []string{"quay.io/jetstack/cert-manager-controller:v1.21.2@" + digest}}}
+	src := &v1.PackageSource{ObjectMeta: metav1.ObjectMeta{Name: "cert-manager"}, Spec: v1.PackageSourceSpec{Images: []string{"quay.io/jetstack/cert-manager-controller:v1.21.2@" + digest}}}
 	return fake.NewClientBuilder().WithScheme(sch).WithObjects(append(objs, src)...).Build()
 }
 

@@ -65,7 +65,7 @@ nav:
   - Reference:
       - CLI: reference/cli.md
       - API: reference/api.md
-      - API versions: reference/api-versions.md
+      - Compatibility: reference/compatibility.md
       - Recipe: reference/recipe.md
       - Helm chart values: reference/chart.md
   - Design:

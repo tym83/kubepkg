@@ -29,7 +29,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"helm.sh/helm/v4/pkg/provenance"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/source"
 )
 
@@ -84,7 +84,7 @@ func TestVerifyChartsAgainstUpstreamProvenance(t *testing.T) {
 
 	recipe := func(keyring, digest string) *Recipe {
 		r := &Recipe{Spec: RecipeSpec{Sources: map[string]Source{}}}
-		r.Spec.Sources["chart"] = Source{Chart: &v1beta1.ChartRef{Repository: srv.URL, Name: "app", Version: "1.0.0", Digest: digest}}
+		r.Spec.Sources["chart"] = Source{Chart: &v1.ChartRef{Repository: srv.URL, Name: "app", Version: "1.0.0", Digest: digest}}
 		r.Spec.Verify = &Verify{Charts: []ChartSignature{{Sources: []string{"chart"}, Keyring: keyring}}}
 		return r
 	}

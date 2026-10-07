@@ -29,7 +29,7 @@ helm show chart "oci://${REG}/packages/kubevirt/kubevirt-operator" --version 1.9
 step "2. install it"
 ${K} apply -f "${WORK}/dist/kubevirt-1.9.0-1.yaml" >/dev/null
 ${K} apply -f - <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: kubevirt}
 spec:

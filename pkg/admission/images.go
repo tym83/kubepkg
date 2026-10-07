@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/images"
 )
 
@@ -55,7 +55,7 @@ type Pinned struct {
 
 // Collect gathers the images the installed packages pin.
 func Collect(ctx context.Context, c client.Reader) (*Pinned, error) {
-	var srcs v1beta1.PackageSourceList
+	var srcs v1.PackageSourceList
 	if err := c.List(ctx, &srcs); err != nil {
 		return nil, err
 	}

@@ -29,8 +29,440 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Ready')].message
       name: Status
       type: string
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: PackageSet installs packages on every Cluster it selects.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: PackageSetSpec says which packages go to which clusters.
+            properties:
+              clusterSelector:
+                description: ClusterSelector picks Clusters by label; empty selects
+                  all.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              packages:
+                items:
+                  description: PackageSetPackage is one package a set installs.
+                  properties:
+                    name:
+                      type: string
+                    spec:
+                      description: Spec is the Package spec written to every selected
+                        cluster.
+                      properties:
+                        components:
+                          additionalProperties:
+                            description: PackageComponent defines overrides for a
+                              specific component
+                            properties:
+                              enabled:
+                                description: |-
+                                  Enabled indicates whether this component should be installed
+                                  If false, the component will be disabled even if it's defined in the PackageSource
+                                type: boolean
+                              namespace:
+                                description: Namespace overrides the namespace the
+                                  component is installed into.
+                                type: string
+                              releaseName:
+                                description: |-
+                                  ReleaseName overrides the component's release name, e.g. to take
+                                  over a release installed before under another name.
+                                type: string
+                              values:
+                                description: |-
+                                  Values contains Helm chart values as a JSON object
+                                  These values will be merged with the default values from the PackageSource
+                                x-kubernetes-preserve-unknown-fields: true
+                            type: object
+                          description: |-
+                            Components is a map of release name to component overrides
+                            Allows overriding values and enabling/disabling specific components from the PackageSource
+                          type: object
+                        crdPolicy:
+                          description: |-
+                            CRDPolicy decides what happens to owned CRDs when the package is
+                            removed. Retain (default) keeps them; Delete removes them and every
+                            object of their kinds.
+                          enum:
+                          - Retain
+                          - Delete
+                          type: string
+                        ignoreDependencies:
+                          description: |-
+                            IgnoreDependencies is a list of package source dependencies to ignore
+                            Dependencies listed here will not be installed even if they are specified in the PackageSource
+                          items:
+                            type: string
+                          type: array
+                        repository:
+                          description: |-
+                            Repository restricts version selection to the named Repository. Empty
+                            considers all of them, by priority. Ignored when a PackageSource for
+                            the package was written by hand.
+                          type: string
+                        revisionHistoryLimit:
+                          description: RevisionHistoryLimit is how many PackageRevisions
+                            to keep. Default 10.
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        upgrade:
+                          description: Upgrade controls how changes are applied.
+                          properties:
+                            atomic:
+                              description: |-
+                                Atomic rolls the whole package back when a revision fails, if the
+                                version being left declares rollback as safe. Default true.
+                              type: boolean
+                            timeout:
+                              description: Timeout for every component to become healthy.
+                                Default 10m.
+                              type: string
+                          type: object
+                        variant:
+                          description: |-
+                            Variant is the name of the variant to use from the PackageSource
+                            If not specified, defaults to "default"
+                          type: string
+                        version:
+                          description: |-
+                            Version is a semver constraint the PackageSource version must satisfy,
+                            e.g. "~1.16". Empty accepts any version.
+                          type: string
+                      type: object
+                  required:
+                  - name
+                  type: object
+                type: array
+              repositories:
+                description: Repositories are written to every selected cluster first.
+                items:
+                  description: PackageSetRepository is one repository a set subscribes
+                    members to.
+                  properties:
+                    name:
+                      type: string
+                    spec:
+                      description: |-
+                        RepositorySpec says where a repository index is and how much to trust
+                        it relative to other repositories.
+                      properties:
+                        allowUnsigned:
+                          description: |-
+                            AllowUnsigned accepts an index nobody signed, for local testing. Its
+                            packages then install whatever the server says they are.
+                          type: boolean
+                        interval:
+                          description: Interval between index refreshes. Default 10m.
+                          type: string
+                        priority:
+                          description: |-
+                            Priority orders repositories that carry the same package: the
+                            highest priority one shadows the others for that package, whatever
+                            versions they have. Default 0.
+                          format: int32
+                          type: integer
+                        publicKeys:
+                          description: |-
+                            PublicKeys are PEM encoded ed25519 keys the index must be signed
+                            with: the signature is fetched from the index URL plus ".sig".
+                            Several keys allow rotation. A repository with neither publicKeys
+                            nor trust is refused unless allowUnsigned is set.
+                          items:
+                            type: string
+                          type: array
+                        trust:
+                          description: |-
+                            Trust verifies the repository the way TUF does: the root keys pinned
+                            here sign root/1.yaml, each later root version is signed by enough
+                            root keys of the one before and of itself, the current root names
+                            the keys and threshold the index needs, and both expire. Use it
+                            instead of publicKeys for threshold signing and key rotation.
+                          properties:
+                            rootKeys:
+                              description: RootKeys are PEM encoded ed25519 keys of
+                                version 1 of the root.
+                              items:
+                                type: string
+                              minItems: 1
+                              type: array
+                            rootThreshold:
+                              description: RootThreshold is how many of them must
+                                have signed it. Default 1.
+                              format: int32
+                              minimum: 1
+                              type: integer
+                          required:
+                          - rootKeys
+                          type: object
+                        url:
+                          description: |-
+                            URL of the index, e.g. https://packages.example.org/index.yaml. The
+                            scheme picks the fetcher; https:// and http:// are built in.
+                          type: string
+                      required:
+                      - url
+                      type: object
+                  required:
+                  - name
+                  - spec
+                  type: object
+                type: array
+              rollout:
+                description: |-
+                  Rollout says how a change to the set reaches its clusters; without
+                  it every cluster gets the change at once.
+                properties:
+                  canary:
+                    description: |-
+                      Canary picks clusters that take a change first; the others follow
+                      once every canary is done with it.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  maxInProgress:
+                    description: |-
+                      MaxInProgress is how many clusters may be taking a change at once;
+                      0 means all of them.
+                    format: int32
+                    type: integer
+                  pauseOnFailure:
+                    description: |-
+                      PauseOnFailure stops a change from reaching more clusters once a
+                      cluster that took it reports a failed or rolled back upgrade.
+                      Default true. A new change to the set resumes the rollout.
+                    type: boolean
+                type: object
+            type: object
+          status:
+            description: PackageSetStatus aggregates the set over its clusters.
+            properties:
+              change:
+                description: Change identifies the set's current repositories and
+                  packages.
+                type: string
+              clusters:
+                items:
+                  description: PackageSetClusterStatus is the set's state on one cluster.
+                  properties:
+                    message:
+                      type: string
+                    name:
+                      type: string
+                    ready:
+                      description: Ready and Total count the set's packages on the
+                        cluster.
+                      format: int32
+                      type: integer
+                    total:
+                      format: int32
+                      type: integer
+                    updated:
+                      description: Updated is true once the cluster has the set's
+                        current change.
+                      type: boolean
+                    versions:
+                      additionalProperties:
+                        type: string
+                      description: Versions are the versions the set's packages run
+                        on the cluster.
+                      type: object
+                  required:
+                  - name
+                  - ready
+                  - total
+                  type: object
+                type: array
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              readyClusters:
+                description: ReadyClusters counts clusters where every package is
+                  ready.
+                format: int32
+                type: integer
+              updatedClusters:
+                description: UpdatedClusters counts clusters that have the current
+                  change.
+                format: int32
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.readyClusters
+      name: Ready Clusters
+      type: integer
+    - jsonPath: .status.updatedClusters
+      name: Updated
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].message
+      name: Status
+      type: string
     deprecated: true
-    deprecationWarning: kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1beta1
+    deprecationWarning: kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -463,6 +895,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Ready')].message
       name: Status
       type: string
+    deprecated: true
+    deprecationWarning: kubepkg.dev/v1beta1 is deprecated; use kubepkg.dev/v1
     name: v1beta1
     schema:
       openAPIV3Schema:
@@ -879,6 +1313,6 @@ spec:
             type: object
         type: object
     served: true
-    storage: true
+    storage: false
     subresources:
       status: {}

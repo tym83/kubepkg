@@ -104,7 +104,7 @@ type RepositoryStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName={pkgrepo}
-// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1beta1"
+// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1alpha1 is deprecated; use kubepkg.dev/v1"
 // +kubebuilder:printcolumn:name="URL",type="string",JSONPath=".spec.url"
 // +kubebuilder:printcolumn:name="Priority",type="integer",JSONPath=".spec.priority"
 // +kubebuilder:printcolumn:name="Packages",type="integer",JSONPath=".status.packages"

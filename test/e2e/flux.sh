@@ -33,7 +33,7 @@ sed "s#oci://${REG}/#oci://${REG_NAME}:5000/#" "${WORK}/dist/hello-1.0.0-1.yaml"
 
 step "3. Flux installs it"
 ${K} apply -f - <<EOF >/dev/null
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: hello}
 spec:

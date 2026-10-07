@@ -35,7 +35,7 @@ const LabelPackage = "kubepkg.dev/package"
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,shortName={pkgrev}
-// +kubebuilder:storageversion
+// +kubebuilder:deprecatedversion:warning="kubepkg.dev/v1beta1 is deprecated; use kubepkg.dev/v1"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Package",type="string",JSONPath=".spec.package"
 // +kubebuilder:printcolumn:name="Revision",type="integer",JSONPath=".spec.revision"

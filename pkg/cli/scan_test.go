@@ -24,7 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/sbom"
 )
 
@@ -47,11 +47,11 @@ func fakeTrivy(t *testing.T) (string, string) {
 func TestScanCountsOncePerImageAndFails(t *testing.T) {
 	trivy, log := fakeTrivy(t)
 	d := "@sha256:" + strings.Repeat("c", 64)
-	comps := []v1beta1.Variant{{Name: "default", Components: []v1beta1.Component{{Name: "x"}}}}
+	comps := []v1.Variant{{Name: "default", Components: []v1.Component{{Name: "x"}}}}
 	pkgs := []sbom.Package{
-		{Name: "a", Spec: v1beta1.PackageSourceSpec{Variants: comps, Images: []string{"quay.io/org/bad:1" + d, "quay.io/org/good:1" + d}}},
-		{Name: "b", Spec: v1beta1.PackageSourceSpec{Variants: comps, Images: []string{"quay.io/org/bad:1" + d}}},
-		{Name: "c", Spec: v1beta1.PackageSourceSpec{Variants: comps}},
+		{Name: "a", Spec: v1.PackageSourceSpec{Variants: comps, Images: []string{"quay.io/org/bad:1" + d, "quay.io/org/good:1" + d}}},
+		{Name: "b", Spec: v1.PackageSourceSpec{Variants: comps, Images: []string{"quay.io/org/bad:1" + d}}},
+		{Name: "c", Spec: v1.PackageSourceSpec{Variants: comps}},
 		{Name: "meta"},
 	}
 	results, unpinned, err := Scan(context.Background(), pkgs, TrivyScanner(trivy, nil), "oci://registry.internal/mirror")

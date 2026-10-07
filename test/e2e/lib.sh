@@ -64,7 +64,7 @@ start_cluster() {
   docker rm -f "${REG_NAME}" >/dev/null 2>&1 || true
   docker run -d --restart=no -p "127.0.0.1:${REG_PORT}:5000" --name "${REG_NAME}" registry:2 >/dev/null
   kind delete cluster --name "${CLUSTER}" >/dev/null 2>&1 || true
-  kind create cluster --name "${CLUSTER}" --wait 120s >/dev/null
+  kind create cluster --name "${CLUSTER}" ${KIND_NODE_IMAGE:+--image "${KIND_NODE_IMAGE}"} --wait 120s >/dev/null
   ${K} apply -f "${ROOT}/config/crd" >/dev/null
 }
 

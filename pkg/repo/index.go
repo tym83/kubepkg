@@ -45,7 +45,7 @@ import (
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/source"
 )
 
@@ -112,8 +112,8 @@ type Version struct {
 	// Digest is the sha256 of the spec in canonical JSON. It identifies
 	// exactly what this version installs, charts included, because every
 	// chart in the spec is pinned by digest.
-	Digest string                    `json:"digest"`
-	Spec   v1beta1.PackageSourceSpec `json:"spec"`
+	Digest string               `json:"digest"`
+	Spec   v1.PackageSourceSpec `json:"spec"`
 	// Signatures are by keys a root delegates the package to.
 	Signatures []Signature `json:"signatures,omitempty"`
 }
@@ -242,7 +242,7 @@ func Newer(a, b Version) bool {
 // checkSource refuses what cannot be installed from a repository: a
 // package tree must be pinned by digest, or the same version could
 // install different charts tomorrow.
-func checkSource(spec *v1beta1.PackageSourceSpec) error {
+func checkSource(spec *v1.PackageSourceSpec) error {
 	usesTree := false
 	for _, v := range spec.Variants {
 		for _, c := range v.Components {
@@ -258,7 +258,7 @@ func checkSource(spec *v1beta1.PackageSourceSpec) error {
 		return nil
 	}
 	ref := spec.SourceRef
-	if ref == nil || ref.Kind != v1beta1.SourceKindOCIArtifact {
+	if ref == nil || ref.Kind != v1.SourceKindOCIArtifact {
 		return errors.New("components with path need an OCIArtifact sourceRef")
 	}
 	if !strings.Contains(ref.URL, "@sha256:") {
@@ -267,7 +267,7 @@ func checkSource(spec *v1beta1.PackageSourceSpec) error {
 	return nil
 }
 
-func pinCharts(ctx context.Context, spec *v1beta1.PackageSourceSpec, charts ChartFetcher, verify bool) error {
+func pinCharts(ctx context.Context, spec *v1.PackageSourceSpec, charts ChartFetcher, verify bool) error {
 	for vi := range spec.Variants {
 		for ci := range spec.Variants[vi].Components {
 			ch := spec.Variants[vi].Components[ci].Chart
@@ -288,7 +288,7 @@ func pinCharts(ctx context.Context, spec *v1beta1.PackageSourceSpec, charts Char
 }
 
 // SpecDigest is the sha256 of a spec in canonical JSON.
-func SpecDigest(spec v1beta1.PackageSourceSpec) (string, error) {
+func SpecDigest(spec v1.PackageSourceSpec) (string, error) {
 	raw, err := json.Marshal(spec)
 	if err != nil {
 		return "", err
@@ -299,7 +299,7 @@ func SpecDigest(spec v1beta1.PackageSourceSpec) (string, error) {
 
 type sourceFile struct {
 	file string
-	src  v1beta1.PackageSource
+	src  v1.PackageSource
 }
 
 // readSources collects PackageSource documents from *.yaml and *.yml
@@ -327,7 +327,7 @@ func readSources(dir string) ([]sourceFile, error) {
 			if err != nil {
 				return fmt.Errorf("%s: %w", p, err)
 			}
-			var src v1beta1.PackageSource
+			var src v1.PackageSource
 			if err := yaml.UnmarshalStrict(doc, &src); err != nil {
 				// Not every document is a PackageSource; only complain
 				// about the ones that claim to be.
@@ -396,7 +396,7 @@ func Parse(raw []byte) (*Index, error) {
 				// match: it was built for a newer kubepkg. Leave that
 				// version out rather than refuse the whole index; the
 				// signature still covers the file.
-				var strict v1beta1.PackageSourceSpec
+				var strict v1.PackageSourceSpec
 				if err := yaml.UnmarshalStrict(specs.Packages[name].Versions[vi].Spec, &strict); err != nil && strings.Contains(err.Error(), "unknown field") {
 					idx.Unknown = append(idx.Unknown, fmt.Sprintf("%s %s build %d", name, v.Version, v.Build))
 					continue

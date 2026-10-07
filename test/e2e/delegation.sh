@@ -28,7 +28,7 @@ for k in root ci team intruder; do "${KP}" repo keygen "${k}" >/dev/null; done
 mkdir -p src site/root
 source_yaml() { # name build
   cat <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata: {name: $1}
 spec:
@@ -96,7 +96,7 @@ ${K} -n "${NS}" wait pod/site --for=condition=Ready --timeout=180s >/dev/null
 ${K} -n "${NS}" cp site/. site:/site >/dev/null
 python3 - "$(cat root.pub)" <<'PY' | ${K} apply -f - >/dev/null
 import json, sys
-print(json.dumps({"apiVersion": "kubepkg.dev/v1beta1", "kind": "Repository", "metadata": {"name": "deleg"},
+print(json.dumps({"apiVersion": "kubepkg.dev/v1", "kind": "Repository", "metadata": {"name": "deleg"},
   "spec": {"url": "http://site.deleg-site.svc:8000/index.yaml", "trust": {"rootKeys": [sys.argv[1]], "rootThreshold": 1}}}))
 PY
 for _ in $(seq 30); do
@@ -110,7 +110,7 @@ echo "  ${msg}"
 
 step "the package installs the build the team signed"
 ${K} apply -f - >/dev/null <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: team-ksm}
 spec: {}

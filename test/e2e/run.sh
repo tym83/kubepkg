@@ -31,7 +31,7 @@ tree() {
 # demo_source <version> <tag> applies the demo PackageSource.
 demo_source() {
   ${K} apply -f - <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata: {name: demo}
 spec:
@@ -73,7 +73,7 @@ start_operator --backend "${BACKEND:-helm}" --values-secret kubepkg-system/platf
 step "1. install demo 1.0.0"
 demo_source 1.0.0 v1
 ${K} apply -f - <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: demo}
 spec:
@@ -110,7 +110,7 @@ echo "  revisions: $(revisions demo)"
 
 step "5. a dependent package waits for its requirement, then installs"
 ${K} apply -f - <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata: {name: app}
 spec:
@@ -129,17 +129,17 @@ spec:
           libraries: [common]
           install: {namespace: e2e-app}
 ---
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: app}
 EOF
 wait_reason app ReconciliationSucceeded
 ${K} apply -f - <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: blocked}
 ---
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata: {name: blocked}
 spec:
@@ -184,7 +184,7 @@ helm package "${WORK}/hello" -d "${WORK}" >/dev/null
 helm push "${WORK}/hello-0.1.0.tgz" "oci://${REG}/e2e/charts" --plain-http >/dev/null 2>&1 || fail "helm push"
 HELLO_DIGEST="sha256:$(shasum -a 256 "${WORK}/hello-0.1.0.tgz" | cut -d' ' -f1)"
 ${K} apply -f - <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata: {name: hello}
 spec:
@@ -196,7 +196,7 @@ spec:
           chart: {repository: "oci://${REG}/e2e/charts", name: hello, version: 0.1.0, digest: "${HELLO_DIGEST}"}
           install: {namespace: e2e-hello}
 ---
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: hello}
 spec:
@@ -206,7 +206,7 @@ EOF
 wait_reason hello ReconciliationSucceeded
 [[ "$(image_of e2e-hello hello)" == registry.k8s.io/pause:3.9 ]] || fail "package values did not reach the published chart"
 bad=$(${K} apply -f - 2>&1 <<EOF || true
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata: {name: both}
 spec:
@@ -226,7 +226,7 @@ helm push "${WORK}/hello-0.2.0.tgz" "oci://${REG}/e2e/charts" --plain-http >/dev
 mkdir -p "${WORK}/recipes"
 for v in 0.1.0 0.2.0; do
   cat > "${WORK}/recipes/greeter-${v}.yaml" <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata:
   name: greeter
@@ -243,7 +243,7 @@ spec:
 EOF
 done
 cat > "${WORK}/recipes/salute-1.0.0.yaml" <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSource
 metadata: {name: salute}
 spec:
@@ -295,18 +295,30 @@ wait_reason greeter ReconciliationSucceeded
 echo "  tampered index refused"
 kill "${WWW_PID}" 2>/dev/null || true
 
-step "v1alpha1 is still served, deprecated"
-out=$(${K} apply -f - 2>&1 <<'EOF'
-apiVersion: kubepkg.dev/v1alpha1
+step "v1beta1 and v1alpha1 are still served, deprecated"
+for old in v1alpha1 v1beta1; do
+  out=$(${K} apply -f - 2>&1 <<EOF
+apiVersion: kubepkg.dev/${old}
 kind: Package
-metadata: {name: legacy-api}
+metadata: {name: legacy-${old}}
 spec: {version: "1.0.0"}
 EOF
 )
-[[ "${out}" == *"kubepkg.dev/v1alpha1 is deprecated"* ]] || fail "no deprecation warning for v1alpha1: ${out}"
-[[ "$(${K} get packages.v1beta1.kubepkg.dev legacy-api -o jsonpath='{.apiVersion}')" == kubepkg.dev/v1beta1 ]] || fail "a v1alpha1 object cannot be read as v1beta1"
-${K} delete packages.kubepkg.dev legacy-api --wait --timeout 60s >/dev/null
-echo "  served, with a warning, and readable as v1beta1"
+  [[ "${out}" == *"kubepkg.dev/${old} is deprecated"* ]] || fail "no deprecation warning for ${old}: ${out}"
+  [[ "$(${K} get packages.v1.kubepkg.dev "legacy-${old}" -o jsonpath='{.apiVersion}')" == kubepkg.dev/v1 ]] || fail "a ${old} object cannot be read as v1"
+  ${K} delete packages.kubepkg.dev "legacy-${old}" --wait --timeout 60s >/dev/null
+done
+echo "  served, with a warning, and readable as v1"
+
+step "objects are stored as v1 only"
+for crd in packages packagesources packagerevisions repositories; do
+  for _ in $(seq 30); do
+    [[ "$(${K} get crd "${crd}.kubepkg.dev" -o jsonpath='{.status.storedVersions}')" == '["v1"]' ]] && break
+    sleep 2
+  done
+  [[ "$(${K} get crd "${crd}.kubepkg.dev" -o jsonpath='{.status.storedVersions}')" == '["v1"]' ]] || fail "${crd}: stored versions $(${K} get crd "${crd}.kubepkg.dev" -o jsonpath='{.status.storedVersions}')"
+done
+echo "  storedVersions: [v1]"
 
 step "10. delete"
 ${K} delete packages.kubepkg.dev app blocked demo hello greeter salute --wait --timeout 180s >/dev/null

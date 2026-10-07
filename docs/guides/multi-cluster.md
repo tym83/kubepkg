@@ -56,7 +56,7 @@ Bind that role to a ServiceAccount in the member, and build the kubeconfig from 
 ## 3. Say what goes where
 
 ```yaml
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: PackageSet
 metadata:
   name: base

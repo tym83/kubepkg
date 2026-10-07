@@ -2,7 +2,7 @@
 
 Generated from the CRDs by `make docs`; do not edit.
 
-All resources are cluster-scoped and served as `kubepkg.dev/v1beta1`, or under the group a platform chooses with `--api-group`. `v1alpha1` is still served, deprecated, with the same schema; see [API versions](api-versions.md).
+All resources are cluster-scoped and served as `kubepkg.dev/v1`, or under the group a platform chooses with `--api-group`. `v1beta1` and `v1alpha1` are still served, deprecated, with the same schema; see [Compatibility](compatibility.md).
 
 - [Cluster](#cluster)
 - [Package](#package)

@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/backend/helm"
 	"github.com/tym83/kubepkg/pkg/controller"
 	"github.com/tym83/kubepkg/pkg/repo"
@@ -73,7 +73,7 @@ func PlanAdopt(ctx context.Context, store *repo.Store, policy repo.Policy, relea
 	if variant == "" {
 		variant = "default"
 	}
-	var v *v1beta1.Variant
+	var v *v1.Variant
 	for i := range sel.Version.Spec.Variants {
 		if sel.Version.Spec.Variants[i].Name == variant {
 			v = &sel.Version.Spec.Variants[i]
@@ -86,7 +86,7 @@ func PlanAdopt(ctx context.Context, store *repo.Store, policy repo.Policy, relea
 	known := map[string]bool{}
 	for _, c := range v.Components {
 		known[c.Name] = true
-		if c.Install != nil && c.Install.Phase == v1beta1.PhasePreUpgrade {
+		if c.Install != nil && c.Install.Phase == v1.PhasePreUpgrade {
 			continue
 		}
 		ac := AdoptComponent{Name: c.Name, Release: c.Name}
@@ -131,19 +131,19 @@ func PlanAdopt(ctx context.Context, store *repo.Store, policy repo.Policy, relea
 }
 
 // Package is the Package that adopts, carrying each release's values.
-func (p *AdoptPlan) PackageObject(constraint string) (*v1beta1.Package, error) {
+func (p *AdoptPlan) PackageObject(constraint string) (*v1.Package, error) {
 	if constraint == "" {
 		constraint = defaultConstraint(p.Version.Version)
 	}
-	pkg := &v1beta1.Package{
+	pkg := &v1.Package{
 		ObjectMeta: metav1.ObjectMeta{Name: p.Package, Annotations: map[string]string{controller.AnnotationAdopt: "true"}},
-		Spec:       v1beta1.PackageSpec{Version: constraint, Repository: p.Repository},
+		Spec:       v1.PackageSpec{Version: constraint, Repository: p.Repository},
 	}
 	if p.Variant != "default" {
 		pkg.Spec.Variant = p.Variant
 	}
 	for _, c := range p.Components {
-		var pc v1beta1.PackageComponent
+		var pc v1.PackageComponent
 		set := false
 		if c.Overridden {
 			pc.Namespace, pc.ReleaseName, set = c.Namespace, c.Release, true
@@ -157,7 +157,7 @@ func (p *AdoptPlan) PackageObject(constraint string) (*v1beta1.Package, error) {
 		}
 		if set {
 			if pkg.Spec.Components == nil {
-				pkg.Spec.Components = map[string]v1beta1.PackageComponent{}
+				pkg.Spec.Components = map[string]v1.PackageComponent{}
 			}
 			pkg.Spec.Components[c.Name] = pc
 		}
@@ -220,7 +220,7 @@ revision only.`,
 			if err != nil {
 				return err
 			}
-			existing := &v1beta1.Package{}
+			existing := &v1.Package{}
 			if err := c.Get(ctx, types.NamespacedName{Name: name}, existing); err == nil {
 				return fmt.Errorf("package %s is managed already", name)
 			} else if !apierrors.IsNotFound(err) {
@@ -269,7 +269,7 @@ revision only.`,
 }
 
 func installedNames(ctx context.Context, c client.Client) (map[string]bool, error) {
-	var list v1beta1.PackageList
+	var list v1.PackageList
 	if err := c.List(ctx, &list); err != nil {
 		return nil, err
 	}

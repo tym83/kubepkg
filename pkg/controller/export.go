@@ -17,14 +17,14 @@ limitations under the License.
 package controller
 
 import (
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 // ReleaseName is the release a component becomes.
-func ReleaseName(c v1beta1.Component) string { return releaseName(c) }
+func ReleaseName(c v1.Component) string { return releaseName(c) }
 
 // ComponentOrder lists component names so every component comes after the
 // ones it depends on, keeping PackageSource order otherwise; a cycle is an
 // error. Tools that render packages for other installers use the order
 // the operator applies them in.
-func ComponentOrder(comps []v1beta1.Component) ([]string, error) { return topoOrder(comps) }
+func ComponentOrder(comps []v1.Component) ([]string, error) { return topoOrder(comps) }

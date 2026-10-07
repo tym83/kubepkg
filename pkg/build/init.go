@@ -67,7 +67,7 @@ type initData struct {
 	Images  []string
 }
 
-var recipeTemplate = template.Must(template.New("recipe").Parse(`apiVersion: kubepkg.dev/v1beta1
+var recipeTemplate = template.Must(template.New("recipe").Parse(`apiVersion: kubepkg.dev/v1
 kind: Recipe
 metadata:
   name: {{.Name}}

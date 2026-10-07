@@ -26,7 +26,7 @@ helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n platform-system \
 kubepkg --api-group packages.example.org list
 ```
 
-Users then see `packages.example.org/v1beta1` Packages, which fits the platform's own API. `crds-for-group` rewrites the CRDs, and the operator and CLI take the group as a flag.
+Users then see `packages.example.org/v1` Packages, which fits the platform's own API. `crds-for-group` rewrites the CRDs, and the operator and CLI take the group as a flag.
 
 ## Plugins
 

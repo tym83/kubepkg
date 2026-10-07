@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/build"
 	"github.com/tym83/kubepkg/pkg/source"
 )
@@ -131,7 +131,7 @@ under the same version and build is an error.`,
 }
 
 // publishedRepository names where a published package's charts are.
-func publishedRepository(src *v1beta1.PackageSource) string {
+func publishedRepository(src *v1.PackageSource) string {
 	for _, v := range src.Spec.Variants {
 		for _, c := range v.Components {
 			if c.Chart != nil {

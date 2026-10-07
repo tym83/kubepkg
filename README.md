@@ -6,7 +6,7 @@ kubepkg works alongside Helm, werf, Flux and Argo CD rather than replacing them.
 
 It runs in any Kubernetes cluster and can be embedded in a platform through configuration, without code changes.
 
-Status: beta; the API is `v1beta1` and changes only in compatible ways.
+Status: stable; the API is `v1` and changes only in compatible ways.
 
 **Documentation: https://tym83.github.io/kubepkg/**, starting with the [quickstart](https://tym83.github.io/kubepkg/quickstart/).
 

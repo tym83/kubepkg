@@ -1,6 +1,6 @@
 {{- range .Values.repositories }}
 ---
-apiVersion: {{ $.Values.apiGroup }}/v1beta1
+apiVersion: {{ $.Values.apiGroup }}/v1
 kind: Repository
 metadata:
   name: {{ .name }}

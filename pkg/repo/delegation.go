@@ -32,7 +32,7 @@ import (
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 // AnnotationSignatures on a PackageSource carries the signatures of a
@@ -213,7 +213,7 @@ func SignSources(file, privatePEM []byte) ([]byte, []string, error) {
 			}
 			continue
 		}
-		var src v1beta1.PackageSource
+		var src v1.PackageSource
 		if err := yaml.UnmarshalStrict(doc, &src); err != nil {
 			return nil, nil, err
 		}

@@ -109,7 +109,7 @@ helm --kube-context "${KUBE_CONTEXT}" upgrade --install kubepkg "${ROOT}/charts/
 # come from the mirror.
 ${K} delete packages.kubepkg.dev "${PACKAGE}" --ignore-not-found --wait --timeout 600s >/dev/null
 ${K} apply -f - >/dev/null <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Repository
 metadata: {name: public}
 spec: {url: ${INDEX}, priority: -1}
@@ -124,7 +124,7 @@ echo "  public repository: ${reason}, as it should be"
 ${K} delete repositories.kubepkg.dev public >/dev/null
 
 ${K} apply -f - >/dev/null <<EOF
-apiVersion: kubepkg.dev/v1beta1
+apiVersion: kubepkg.dev/v1
 kind: Package
 metadata: {name: ${PACKAGE}}
 spec: {}

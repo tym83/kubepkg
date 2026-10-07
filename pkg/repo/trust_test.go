@@ -30,7 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 )
 
 type keypair struct{ priv, pub []byte }
@@ -275,12 +275,12 @@ func TestPlainSignaturesEverywhere(t *testing.T) {
 func TestUnsignedRepositoriesNeedConsent(t *testing.T) {
 	s := newRepoServer()
 	s.publishIndex(t, time.Time{})
-	spec := v1beta1.RepositorySpec{URL: "mem://r/index.yaml"}
-	if _, _, _, err := LoadRepository(context.Background(), Fetchers{"mem": s.files}, spec, v1beta1.RepositoryStatus{}, s.now); !errors.Is(err, ErrBadSignature) {
+	spec := v1.RepositorySpec{URL: "mem://r/index.yaml"}
+	if _, _, _, err := LoadRepository(context.Background(), Fetchers{"mem": s.files}, spec, v1.RepositoryStatus{}, s.now); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("an unsigned repository without allowUnsigned: %v", err)
 	}
 	spec.AllowUnsigned = true
-	if _, _, _, err := LoadRepository(context.Background(), Fetchers{"mem": s.files}, spec, v1beta1.RepositoryStatus{}, s.now); err != nil {
+	if _, _, _, err := LoadRepository(context.Background(), Fetchers{"mem": s.files}, spec, v1.RepositoryStatus{}, s.now); err != nil {
 		t.Fatal(err)
 	}
 }

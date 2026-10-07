@@ -20,13 +20,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/backend"
 )
 
 func TestChartPreparerMirrorKeepsTheDigest(t *testing.T) {
-	comp := &v1beta1.Component{Name: "app", Chart: &v1beta1.ChartRef{Repository: "https://charts.example.org", Name: "app", Version: "1.0.0"}}
-	src := &v1beta1.PackageSource{}
+	comp := &v1.Component{Name: "app", Chart: &v1.ChartRef{Repository: "https://charts.example.org", Name: "app", Version: "1.0.0"}}
+	src := &v1.PackageSource{}
 	var plain, mirrored backend.Component
 	d1, err := ChartPreparer{}.Prepare(context.Background(), src, nil, comp, &plain)
 	if err != nil {

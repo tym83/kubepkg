@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1beta1"
+	"github.com/tym83/kubepkg/api/v1"
 	"github.com/tym83/kubepkg/pkg/backend/helm"
 	"github.com/tym83/kubepkg/pkg/controller"
 	"github.com/tym83/kubepkg/pkg/repo"
@@ -33,12 +33,12 @@ type releases map[string]*helm.ReleaseInfo
 func (r releases) Release(ns, name string) (*helm.ReleaseInfo, error) { return r[ns+"/"+name], nil }
 
 func adoptStore() *repo.Store {
-	spec := v1beta1.PackageSourceSpec{Version: "1.21.2", Variants: []v1beta1.Variant{{
+	spec := v1.PackageSourceSpec{Version: "1.21.2", Variants: []v1.Variant{{
 		Name:     "default",
-		Requires: []v1beta1.Requirement{{Package: "networking"}},
-		Components: []v1beta1.Component{
-			{Name: "cert-manager", Chart: &v1beta1.ChartRef{Repository: "oci://r/p", Name: "cert-manager", Version: "1.21.2-2"}, Install: &v1beta1.ComponentInstall{Namespace: "cert-manager"}},
-			{Name: "issuers", Chart: &v1beta1.ChartRef{Repository: "oci://r/p", Name: "issuers", Version: "1.21.2-2"}, Install: &v1beta1.ComponentInstall{Namespace: "cert-manager", DependsOn: []string{"cert-manager"}}},
+		Requires: []v1.Requirement{{Package: "networking"}},
+		Components: []v1.Component{
+			{Name: "cert-manager", Chart: &v1.ChartRef{Repository: "oci://r/p", Name: "cert-manager", Version: "1.21.2-2"}, Install: &v1.ComponentInstall{Namespace: "cert-manager"}},
+			{Name: "issuers", Chart: &v1.ChartRef{Repository: "oci://r/p", Name: "issuers", Version: "1.21.2-2"}, Install: &v1.ComponentInstall{Namespace: "cert-manager", DependsOn: []string{"cert-manager"}}},
 		},
 	}}}
 	s := repo.NewStore()
