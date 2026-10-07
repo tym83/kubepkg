@@ -33,6 +33,12 @@ argo:
 # fetches only from there; digests are verified as usual.
 mirror: ""
 
+# kubernetes.io/dockerconfigjson Secrets with credentials for the
+# registries charts and package trees come from (helm and werf backends).
+# A bare name is a Secret in the release namespace; namespace/name works
+# too. They are read on every pull, so rotated credentials apply at once.
+registrySecrets: []
+
 # Keep pods in package namespaces on the images their packages pin:
 #   off      nothing happens
 #   warn     tags the packages pin are rewritten to their digests; other

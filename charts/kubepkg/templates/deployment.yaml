@@ -40,6 +40,9 @@ spec:
             - --argo-namespace={{ .Values.argo.namespace }}
             - --argo-project={{ .Values.argo.project }}
             {{- end }}
+            {{- range .Values.registrySecrets }}
+            - --registry-secret={{ if contains "/" . }}{{ . }}{{ else }}{{ $.Release.Namespace }}/{{ . }}{{ end }}
+            {{- end }}
             {{- with .Values.mirror }}
             - --mirror={{ . }}
             {{- end }}

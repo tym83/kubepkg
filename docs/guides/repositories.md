@@ -200,6 +200,19 @@ Clients older than 0.5 cannot read a root with delegations and refuse it. Upgrad
 
 Index expiry forces CI to re-sign the index regularly, even when nothing changed. That is the point. A mirror or a man in the middle that keeps serving an old, validly signed index is caught within the expiry period. Choose `--expires` longer than your longest expected outage of the build pipeline: a month is common. The chart's alert `KubepkgRepositoryStale` fires when an index has not changed for longer than `metrics.prometheusRule.indexMaxAge`. Set that below the expiry, and you hear about a stuck pipeline before clusters start refusing its index.
 
+## Private registries
+
+Charts and package trees in a registry that needs a login are pulled with credentials from `kubernetes.io/dockerconfigjson` Secrets in the cluster:
+
+```bash
+kubectl -n kubepkg-system create secret docker-registry registry-creds \
+  --docker-server=registry.example.org --docker-username=bot --docker-password="$TOKEN"
+helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reset-then-reuse-values \
+  --set 'registrySecrets={registry-creds}'
+```
+
+The operator reads the Secrets on every pull, so rotated credentials apply without a restart. Each registry gets the entry for its host, and one Secret can hold several. An operator that runs outside the cluster can use a Docker config file instead, with `--registry-config`; the Secrets are tried first. This applies to OCI registries with the helm and werf backends. Flux and Argo CD pull charts themselves, with their own credentials.
+
 ## Mirrors and air-gapped clusters
 
 An index pins charts at the registry they were built into, and the operator fetches them from there. To serve clusters that cannot reach that registry, build the same recipes into your own registry and publish your own index, signed by your own keys:

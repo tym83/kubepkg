@@ -24,6 +24,7 @@ import (
 	"flag"
 	"fmt"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -101,7 +102,11 @@ type Options struct {
 
 	CacheDir       string
 	RegistryConfig string
-	PlainHTTP      bool
+	// RegistrySecrets are namespace/name of kubernetes.io/dockerconfigjson
+	// Secrets with registry credentials, read on every pull and tried
+	// before RegistryConfig.
+	RegistrySecrets []string
+	PlainHTTP       bool
 
 	MetricsAddr string
 	ProbeAddr   string
@@ -153,10 +158,45 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.NelmBinary, "nelm-binary", o.NelmBinary, "nelm executable (werf backend)")
 	fs.StringVar(&o.CacheDir, "cache-dir", o.CacheDir, "where package trees and charts are kept (helm backend)")
 	fs.StringVar(&o.RegistryConfig, "registry-config", o.RegistryConfig, "Docker config file with registry credentials")
+	fs.Var((*listFlag)(&o.RegistrySecrets), "registry-secret", "namespace/name of a dockerconfigjson Secret with registry credentials (repeatable)")
 	fs.BoolVar(&o.PlainHTTP, "plain-http", o.PlainHTTP, "talk to OCI registries without TLS (local test registries only)")
 	fs.StringVar(&o.MetricsAddr, "metrics-bind-address", o.MetricsAddr, "metrics endpoint")
 	fs.StringVar(&o.ProbeAddr, "health-probe-bind-address", o.ProbeAddr, "health probe endpoint")
 	fs.BoolVar(&o.LeaderElect, "leader-elect", o.LeaderElect, "enable leader election")
+}
+
+// fetcher downloads charts and package trees with the operator's
+// registry settings.
+func (env Env) fetcher() *source.Fetcher {
+	o := env.Options
+	f := &source.Fetcher{CacheDir: o.CacheDir, PlainHTTP: o.PlainHTTP, CredentialsFile: o.RegistryConfig, Mirror: o.Mirror}
+	if len(o.RegistrySecrets) > 0 {
+		secrets := o.RegistrySecrets
+		cs, csErr := kubernetes.NewForConfig(env.Config)
+		f.Credentials = source.DockerConfigCredentials(func(ctx context.Context) ([][]byte, error) {
+			if csErr != nil {
+				return nil, csErr
+			}
+			var out [][]byte
+			for _, ref := range secrets {
+				ns, name, ok := strings.Cut(ref, "/")
+				if !ok {
+					return nil, fmt.Errorf("--registry-secret %q: want namespace/name", ref)
+				}
+				sec, err := cs.CoreV1().Secrets(ns).Get(ctx, name, metav1.GetOptions{})
+				if err != nil {
+					return nil, fmt.Errorf("secret %s: %w", ref, err)
+				}
+				raw, ok := sec.Data[corev1.DockerConfigJsonKey]
+				if !ok {
+					return nil, fmt.Errorf("secret %s has no %s", ref, corev1.DockerConfigJsonKey)
+				}
+				out = append(out, raw)
+			}
+			return out, nil
+		})
+	}
+	return f
 }
 
 // HelmBackend installs charts in-process with the Helm SDK.
@@ -170,7 +210,7 @@ func HelmBackend(env Env) (backend.Backend, controller.Preparer, error) {
 		return nil, nil, err
 	}
 	return b, &controller.OCIPreparer{
-		Fetcher: &source.Fetcher{CacheDir: o.CacheDir, PlainHTTP: o.PlainHTTP, CredentialsFile: o.RegistryConfig, Mirror: o.Mirror},
+		Fetcher: env.fetcher(),
 		WorkDir: filepath.Join(o.CacheDir, "composed"),
 	}, nil
 }
@@ -194,7 +234,7 @@ func WerfBackend(env Env) (backend.Backend, controller.Preparer, error) {
 		return nil, nil, err
 	}
 	return b, &controller.OCIPreparer{
-		Fetcher: &source.Fetcher{CacheDir: o.CacheDir, PlainHTTP: o.PlainHTTP, CredentialsFile: o.RegistryConfig, Mirror: o.Mirror},
+		Fetcher: env.fetcher(),
 		WorkDir: filepath.Join(o.CacheDir, "composed"),
 	}, nil
 }
@@ -339,5 +379,15 @@ func (l *labelsFlag) Set(s string) error {
 		*l = map[string]string{}
 	}
 	(*l)[k] = v
+	return nil
+}
+
+// listFlag is a repeatable string flag.
+type listFlag []string
+
+func (l *listFlag) String() string { return strings.Join(*l, ",") }
+
+func (l *listFlag) Set(s string) error {
+	*l = append(*l, s)
 	return nil
 }

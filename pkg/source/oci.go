@@ -66,6 +66,10 @@ type Fetcher struct {
 	// CredentialsFile is a Docker config with registry credentials; empty
 	// means anonymous access.
 	CredentialsFile string
+	// Credentials, when set, is asked first for a registry's credentials,
+	// for example from Secrets in the cluster; an empty answer falls back
+	// to CredentialsFile.
+	Credentials auth.CredentialFunc
 	// Mirror, an oci:// registry path, is where every chart and package
 	// tree is fetched from instead of where it was published; see
 	// MirrorPath. Digests are verified as usual.
@@ -157,15 +161,37 @@ func (f *Fetcher) repository(target string) (*remote.Repository, error) {
 	}
 	repo.PlainHTTP = f.plainHTTP(repo.Reference.Registry)
 	client := &auth.Client{Client: retry.DefaultClient, Cache: auth.NewCache()}
+	var fromFile auth.CredentialFunc
 	if f.CredentialsFile != "" {
 		store, err := credentials.NewStore(f.CredentialsFile, credentials.StoreOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("load registry credentials: %w", err)
 		}
-		client.Credential = credentials.Credential(store)
+		fromFile = credentials.Credential(store)
 	}
+	client.Credential = firstCredential(f.Credentials, fromFile)
 	repo.Client = client
 	return repo, nil
+}
+
+// firstCredential asks each source in turn and takes the first answer
+// that is not empty.
+func firstCredential(sources ...auth.CredentialFunc) auth.CredentialFunc {
+	return func(ctx context.Context, hostport string) (auth.Credential, error) {
+		for _, src := range sources {
+			if src == nil {
+				continue
+			}
+			c, err := src(ctx, hostport)
+			if err != nil {
+				return auth.EmptyCredential, err
+			}
+			if c != auth.EmptyCredential {
+				return c, nil
+			}
+		}
+		return auth.EmptyCredential, nil
+	}
 }
 
 // untar unpacks a gzipped tarball into dst, refusing entries that escape
