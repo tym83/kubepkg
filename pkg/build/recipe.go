@@ -77,6 +77,18 @@ type Verify struct {
 	// Images are the signatures the pinned images must carry, checked
 	// with cosign by digest.
 	Images []ImageSignature `json:"images,omitempty"`
+	// Charts are the published chart sources the upstream signs with
+	// Helm provenance files, and the keyring to check them with.
+	Charts []ChartSignature `json:"charts,omitempty"`
+}
+
+// ChartSignature checks chart sources against the .prov files their
+// upstream publishes, as helm verify does.
+type ChartSignature struct {
+	// Sources names chart sources of the recipe.
+	Sources []string `json:"sources"`
+	// Keyring is a GPG public keyring file next to the recipe.
+	Keyring string `json:"keyring"`
 }
 
 // ImageSignature is how the images of some repositories are signed:

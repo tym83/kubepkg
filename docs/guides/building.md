@@ -130,6 +130,18 @@ spec:
 - `signatureDigest` and `ignoreTransparencyLog` follow the upstream's own instructions. cert-manager, for example, signs with a key in Google Cloud KMS and records nothing in the Rekor transparency log. A keyless rule cannot skip the log: only the log proves the short-lived certificate was valid when the image was signed.
 - `cosign` must be on `PATH` wherever a recipe with rules is validated or built; without it the recipe is refused rather than built unchecked.
 
+Charts can be checked the same way. Some upstreams sign their Helm charts with a provenance file (`.prov`) and publish a GPG keyring:
+
+```yaml
+spec:
+  verify:
+    charts:
+      - sources: [chart]
+        keyring: keys/cert-manager-keyring-2021-09-20-1020CF3C033D4F35BAE1C19E1226061C665DF13E.gpg
+```
+
+`validate` and `build` download the provenance file from where the chart is published, next to the archive in a chart repository or as its provenance layer in an OCI registry. They then check it as `helm verify` does: the signature against a key in the keyring, and the archive's hash in the signed message.
+
 ## Validating
 
 ```bash

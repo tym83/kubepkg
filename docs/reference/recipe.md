@@ -34,6 +34,14 @@ spec:
 | Field | Type | Description |
 |---|---|---|
 | `images` | list of ImageSignature | signatures the pinned images must carry, checked with `cosign verify` by digest |
+| `charts` | list of ChartSignature | chart sources checked against their upstream's provenance files |
+
+### ChartSignature
+
+| Field | Type | Description |
+|---|---|---|
+| `sources` | list of string, required | chart sources of the recipe |
+| `keyring` | string, required | a GPG public keyring file next to the recipe |
 
 ### ImageSignature
 

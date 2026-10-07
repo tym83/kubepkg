@@ -24,7 +24,10 @@ import (
 	"path"
 	"strings"
 
+	"helm.sh/helm/v4/pkg/provenance"
+
 	"github.com/tym83/kubepkg/pkg/images"
+	"github.com/tym83/kubepkg/pkg/source"
 )
 
 // ImageVerifier checks that image carries the signature rule describes.
@@ -126,3 +129,44 @@ func VerifyImages(ctx context.Context, r *Recipe, dir string, verify ImageVerifi
 
 // HasImageRules reports whether a recipe asks to verify image signatures.
 func HasImageRules(r *Recipe) bool { return r.Spec.Verify != nil && len(r.Spec.Verify.Images) > 0 }
+
+// VerifyCharts checks the chart sources the recipe names against their
+// upstream's provenance files: the signature, by a key in the keyring, and
+// the archive's hash in the signed message.
+func VerifyCharts(ctx context.Context, r *Recipe, dir string, f *source.Fetcher) error {
+	if r.Spec.Verify == nil {
+		return nil
+	}
+	for _, rule := range r.Spec.Verify.Charts {
+		if rule.Keyring == "" || len(rule.Sources) == 0 {
+			return errors.New("a chart signature rule needs sources and a keyring")
+		}
+		keyring, err := within(dir, rule.Keyring)
+		if err != nil {
+			return err
+		}
+		signatory, err := provenance.NewFromKeyring(keyring, "")
+		if err != nil {
+			return fmt.Errorf("keyring %s: %w", rule.Keyring, err)
+		}
+		for _, name := range rule.Sources {
+			src, ok := r.Spec.Sources[name]
+			if !ok || src.Chart == nil {
+				return fmt.Errorf("chart signature rule: %s is not a chart source", name)
+			}
+			c := source.Chart{Repository: src.Chart.Repository, Name: src.Chart.Name, Version: src.Chart.Version, Digest: src.Chart.Digest}
+			archive, _, err := f.ChartArchive(ctx, c)
+			if err != nil {
+				return err
+			}
+			prov, filename, err := f.ChartProvenance(ctx, c)
+			if err != nil {
+				return err
+			}
+			if _, err := signatory.Verify(archive, prov, filename); err != nil {
+				return fmt.Errorf("chart %s %s is not signed by the keyring %s: %w", c.Name, c.Version, rule.Keyring, err)
+			}
+		}
+	}
+	return nil
+}

@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -184,42 +185,98 @@ type repoIndex struct {
 
 // chartFromIndex finds the chart in the repository index and downloads it.
 func chartFromIndex(ctx context.Context, c Chart) ([]byte, error) {
-	base, err := url.Parse(strings.TrimSuffix(c.Repository, "/") + "/")
+	u, digest, err := indexEntry(ctx, c)
 	if err != nil {
 		return nil, err
+	}
+	archive, err := Download(ctx, u.String(), maxChartBytes)
+	if err != nil {
+		return nil, err
+	}
+	if digest != "" {
+		sum := sha256.Sum256(archive)
+		if hex.EncodeToString(sum[:]) != strings.TrimPrefix(digest, "sha256:") {
+			return nil, fmt.Errorf("archive at %s does not match the digest in the repository index", u)
+		}
+	}
+	return archive, nil
+}
+
+// indexEntry finds a chart version's download URL in a Helm repository.
+func indexEntry(ctx context.Context, c Chart) (*url.URL, string, error) {
+	base, err := url.Parse(strings.TrimSuffix(c.Repository, "/") + "/")
+	if err != nil {
+		return nil, "", err
 	}
 	raw, err := Download(ctx, base.ResolveReference(&url.URL{Path: "index.yaml"}).String(), maxIndexBytes)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var idx repoIndex
 	if err := yaml.Unmarshal(raw, &idx); err != nil {
-		return nil, fmt.Errorf("decode index of %s: %w", c.Repository, err)
+		return nil, "", fmt.Errorf("decode index of %s: %w", c.Repository, err)
 	}
 	for _, e := range idx.Entries[c.Name] {
 		if e.Version != c.Version {
 			continue
 		}
 		if len(e.URLs) == 0 {
-			return nil, fmt.Errorf("index of %s lists no download URL", c.Repository)
+			return nil, "", fmt.Errorf("index of %s lists no download URL", c.Repository)
 		}
 		u, err := base.Parse(e.URLs[0])
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		archive, err := Download(ctx, u.String(), maxChartBytes)
+		return u, e.Digest, nil
+	}
+	return nil, "", fmt.Errorf("repository %s has no version %s", c.Repository, c.Version)
+}
+
+// ProvenanceMediaType is the layer of a Helm chart's provenance file in a
+// registry.
+const ProvenanceMediaType = "application/vnd.cncf.helm.chart.provenance.v1.prov"
+
+// ChartProvenance downloads the provenance file the upstream published
+// with a chart, and the archive file name it signs.
+func (f *Fetcher) ChartProvenance(ctx context.Context, c Chart) (prov []byte, filename string, err error) {
+	switch {
+	case strings.HasPrefix(c.Repository, "oci://"):
+		target := strings.TrimSuffix(strings.TrimPrefix(c.Repository, "oci://"), "/") + "/" + c.Name + ":" + strings.ReplaceAll(c.Version, "+", "_")
+		repo, err := f.repository(target)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		if e.Digest != "" {
-			sum := sha256.Sum256(archive)
-			if hex.EncodeToString(sum[:]) != strings.TrimPrefix(e.Digest, "sha256:") {
-				return nil, fmt.Errorf("archive at %s does not match the digest in the repository index", u)
+		desc, err := repo.Resolve(ctx, repo.Reference.Reference)
+		if err != nil {
+			return nil, "", fmt.Errorf("resolve %s: %w", target, err)
+		}
+		raw, err := content.FetchAll(ctx, repo, desc)
+		if err != nil {
+			return nil, "", err
+		}
+		var manifest ocispec.Manifest
+		if err := json.Unmarshal(raw, &manifest); err != nil {
+			return nil, "", err
+		}
+		for _, l := range manifest.Layers {
+			if l.MediaType == ProvenanceMediaType {
+				prov, err := content.FetchAll(ctx, repo, l)
+				return prov, c.Name + "-" + c.Version + ".tgz", err
 			}
 		}
-		return archive, nil
+		return nil, "", fmt.Errorf("%s has no provenance file", target)
+	case strings.HasPrefix(c.Repository, "http://"), strings.HasPrefix(c.Repository, "https://"):
+		u, _, err := indexEntry(ctx, c)
+		if err != nil {
+			return nil, "", err
+		}
+		prov, err := Download(ctx, u.String()+".prov", 1<<20)
+		if err != nil {
+			return nil, "", fmt.Errorf("provenance of %s %s: %w", c.Name, c.Version, err)
+		}
+		return prov, path.Base(u.Path), nil
 	}
-	return nil, fmt.Errorf("repository %s has no version %s", c.Repository, c.Version)
+	return nil, "", fmt.Errorf("repository %q is neither http(s):// nor oci://", c.Repository)
 }
 
 // ErrNotFound is returned by Download for a 404.
