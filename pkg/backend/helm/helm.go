@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"helm.sh/helm/v4/pkg/action"
@@ -56,6 +57,9 @@ type Backend struct {
 	// the PackageRevision history, or rollbacks would target pruned releases.
 	MaxHistory int
 	Logger     *slog.Logger
+
+	mu      sync.Mutex
+	running map[string]bool // releases this process is operating on
 }
 
 // New returns a Helm backend talking to the cluster in cfg.
@@ -103,6 +107,12 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 	if err != nil {
 		return backend.State{}, err
 	}
+	if waiting, err := b.recoverInterrupted(cfg, c, time.Now()); err != nil {
+		return backend.State{}, err
+	} else if waiting != "" {
+		return backend.State{Exists: true, Progressing: true, Message: waiting}, nil
+	}
+	defer b.begin(c.Key())()
 
 	if _, err := action.NewHistory(cfg).Run(c.ReleaseName); errors.Is(err, driver.ErrReleaseNotFound) {
 		in := action.NewInstall(cfg)
@@ -199,6 +209,12 @@ func (b *Backend) Rollback(ctx context.Context, c backend.Component, toRevision 
 	if err != nil {
 		return backend.State{}, err
 	}
+	if waiting, err := b.recoverInterrupted(cfg, c, time.Now()); err != nil {
+		return backend.State{}, err
+	} else if waiting != "" {
+		return backend.State{Exists: true, Progressing: true, Message: waiting}, fmt.Errorf("roll back %s: %s", c.Key(), waiting)
+	}
+	defer b.begin(c.Key())()
 	rb := action.NewRollback(cfg)
 	rb.Version = toRevision
 	rb.WaitStrategy = kube.StatusWatcherStrategy
