@@ -117,7 +117,12 @@ func checkCRDUpgrades(res *Result, rep *Report) {
 			if err != nil {
 				continue
 			}
-			if ch, ok := loaded.(*chartv2.Chart); ok && len(ch.CRDObjects()) > 0 {
+			ch, ok := loaded.(*chartv2.Chart)
+			// Subcharts their conditions switch off install no CRDs.
+			if !ok || chartutilv2.ProcessDependencies(ch, map[string]any{}) != nil {
+				continue
+			}
+			if len(ch.CRDObjects()) > 0 {
 				rep.Warnings = append(rep.Warnings, fmt.Sprintf("component %s ships CRDs in crds/, which Helm installs but never upgrades; set install.upgradeCRDs: CreateReplace to upgrade them with the package", c.Name))
 			}
 		}
