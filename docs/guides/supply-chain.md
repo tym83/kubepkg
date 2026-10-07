@@ -40,3 +40,27 @@ kubepkg scan --cluster --fail-on critical
 - Packages that pin no images cannot be scanned and are listed as such. Pin them with `kubepkg images`.
 
 kubepkg does not scan anything itself and keeps no vulnerability data: it knows what to scan, and Trivy knows what is vulnerable.
+
+## Keeping pods on pinned images
+
+The signed index says which image digests a package runs. With the image policy on, the cluster holds pods to it:
+
+```bash
+helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reset-then-reuse-values \
+  --set imagePolicy=enforce        # or warn
+```
+
+The operator labels the namespaces packages install into (`kubepkg.dev/image-policy`) and serves a pod admission webhook there:
+
+- **A tag a package pins becomes that tag at its pinned digest.** Charts usually refer to images by tag. The pod runs `quay.io/jetstack/cert-manager-controller:v1.21.2@sha256:70f5…`, so nodes pull exactly the image the index vouches for, even if somebody moves the tag in the upstream registry.
+- **In `enforce` mode, an image no installed package pins is refused**:
+
+  ```text
+  Error from server: admission webhook "pods.images.kubepkg.dev" denied the request: no installed package pins docker.io/library/busybox:1.36; namespace cert-manager runs only images packages pin (kubepkg.dev/image-policy=enforce)
+  ```
+
+- **In `warn` mode it runs, with a warning**, which is a safe way to see what enforce would refuse.
+
+A namespace where some package pins no images stays at `warn`, since `enforce` would refuse that package's own pods. Pin them with `kubepkg images`. Namespaces that no package installs into are not touched, and neither are pods that operators create in users' namespaces, such as KubeVirt's virtual machine pods.
+
+With `enforce`, the webhook's failure policy is `Fail`: while no operator replica answers, pods in package namespaces cannot be created. Run two replicas (`replicas: 2`). The operator issues the webhook's certificate itself, shares it between replicas through a Secret, and renews it ahead of expiry, so kubepkg does not depend on a certificate manager it may be the one installing.
