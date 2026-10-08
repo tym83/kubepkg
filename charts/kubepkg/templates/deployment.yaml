@@ -27,6 +27,7 @@ spec:
             - --backend={{ .Values.backend }}
             - --api-group={{ .Values.apiGroup }}
             - --leader-elect=true
+            - --package-workers={{ .Values.packageWorkers | default 4 }}
             - --cache-dir=/var/cache/kubepkg
             - --metrics-bind-address=:8080
             - --health-probe-bind-address=:8081

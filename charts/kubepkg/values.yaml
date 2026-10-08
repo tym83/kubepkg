@@ -68,6 +68,11 @@ repositories: []
 
 replicas: 1
 
+# Packages reconciled at once. With the helm and werf backends an install
+# holds a worker until its components are ready, so one slow package must
+# not keep the others, its dependents included, waiting.
+packageWorkers: 4
+
 metrics:
   # A Service in front of the operator's metrics endpoint.
   service: true
