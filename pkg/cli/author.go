@@ -18,11 +18,17 @@ package cli
 
 import (
 	"fmt"
+	"github.com/tym83/kubepkg/pkg/admission"
+	"github.com/tym83/kubepkg/pkg/controller"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sort"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -98,23 +104,37 @@ the package deploys on its own, then run "kubepkg validate".
 	return cmd
 }
 
-func imagesCmd() *cobra.Command {
+func imagesCmd(cl *cluster) *cobra.Command {
 	var (
 		plainHTTP      bool
 		registryConfig string
+		inCluster      bool
 	)
 	cmd := &cobra.Command{
-		Use:   "images <recipe-dir>",
-		Short: "Print the images a recipe's package runs, pinned by digest",
+		Use:   "images <recipe-dir> | --cluster",
+		Short: "Print the images a recipe's package runs, pinned by digest, or check a cluster's",
 		Long: `Images builds the recipe without publishing it, finds the images its
 charts run with their default values, adds those package.images already
 lists (images an operator deploys on its own appear in no chart), pins
 every one by the digest its tag points at now, and prints the
 package.images block to paste into the recipe. Images already pinned keep
 their digests; a published version whose images change needs a new build
-number.`,
-		Args: cobra.ExactArgs(1),
+number.
+
+With --cluster, it checks what runs instead: every container in the
+namespaces packages install into, against the images the installed
+packages pin, as the image policy would. It lists what no package pins,
+by namespace and owner, and fails when there is any.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if inCluster {
+				return cobra.NoArgs(cmd, args)
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if inCluster {
+				return checkClusterImages(cmd, cl)
+			}
 			f, err := userCacheFetcher(plainHTTP)
 			if err != nil {
 				return err
@@ -170,7 +190,70 @@ number.`,
 	}
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "talk to registries without TLS (local registries only)")
 	cmd.Flags().StringVar(&registryConfig, "registry-config", "", "Docker config file with registry credentials")
+	cmd.Flags().BoolVar(&inCluster, "cluster", false, "check the images running in package namespaces against what the packages pin")
 	return cmd
+}
+
+// checkClusterImages lists running containers in package namespaces that
+// no installed package pins.
+func checkClusterImages(cmd *cobra.Command, cl *cluster) error {
+	ctx := cmd.Context()
+	c, err := cl.client()
+	if err != nil {
+		return err
+	}
+	pinned, err := admission.Collect(ctx, c)
+	if err != nil {
+		return err
+	}
+	namespaces, err := controller.PackageNamespaces(ctx, c)
+	if err != nil {
+		return err
+	}
+	type finding struct{ namespace, owner, image, packages string }
+	var found []finding
+	seen := map[string]bool{}
+	names := make([]string, 0, len(namespaces))
+	for ns := range namespaces {
+		names = append(names, ns)
+	}
+	sort.Strings(names)
+	for _, ns := range names {
+		var pods corev1.PodList
+		if err := c.List(ctx, &pods, client.InNamespace(ns)); err != nil {
+			return err
+		}
+		for _, pod := range pods.Items {
+			owner := "Pod/" + pod.Name
+			if ref := metav1.GetControllerOf(&pod); ref != nil {
+				owner = ref.Kind + "/" + ref.Name
+			}
+			for _, ctr := range append(append([]corev1.Container{}, pod.Spec.InitContainers...), pod.Spec.Containers...) {
+				if _, ok := pinned.Resolve(ctr.Image); ok {
+					continue
+				}
+				key := ns + " " + owner + " " + ctr.Image
+				if !seen[key] {
+					seen[key] = true
+					found = append(found, finding{ns, owner, ctr.Image, strings.Join(namespaces[ns], ",")})
+				}
+			}
+		}
+	}
+	w := cmd.OutOrStdout()
+	if len(found) == 0 {
+		fmt.Fprintf(w, "every container in %d package namespaces runs an image its packages pin\n", len(names))
+		return nil
+	}
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAMESPACE\tPACKAGES\tOWNER\tIMAGE NO PACKAGE PINS")
+	for _, f := range found {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", f.namespace, f.packages, f.owner, f.image)
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	return fmt.Errorf("%d images run unpinned; add them to package.images (kubepkg images <recipe>), or imagePolicy=enforce will refuse them", len(found))
 }
 
 func validateCmd() *cobra.Command {

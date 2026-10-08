@@ -61,6 +61,22 @@ The operator labels the namespaces packages install into (`kubepkg.dev/image-pol
 
 - **In `warn` mode it runs, with a warning**, which is a safe way to see what enforce would refuse.
 
+Admission warnings go back to whoever creates the pod, which is usually a controller, so people rarely see them. The webhook therefore also leaves an Event on the pod's owner: `UnpinnedImage` in warn mode, `ImageRefused` in enforce mode. `kubectl get events -n <namespace>` shows them. To check a whole cluster at once, before you turn `enforce` on or at any time:
+
+```bash
+kubepkg images --cluster
+```
+
+```text
+NAMESPACE     PACKAGES      OWNER      IMAGE NO PACKAGE PINS
+cert-manager  cert-manager  Pod/stray  docker.io/library/busybox:1.36
+error: 1 images run unpinned; add them to package.images (kubepkg images <recipe>), or imagePolicy=enforce will refuse them
+```
+
+It checks every running container in the namespaces packages install into against what the installed packages pin, as the webhook would, and exits non-zero when something is unpinned.
+
+**Operators start pods of their own.** Envoy for each Gateway, vmagent and vmalert, config reloaders, helper pods: these images appear in no chart, so `kubepkg images <recipe>` cannot find them. Add them to the recipe's `package.images` by hand, or `enforce` refuses them. `kubepkg images --cluster` on a cluster where the operator is running shows what is missing.
+
 A namespace where some package pins no images stays at `warn`, since `enforce` would refuse that package's own pods. Pin them with `kubepkg images`. Namespaces that no package installs into are not touched, and neither are pods that operators create in users' namespaces, such as KubeVirt's virtual machine pods.
 
 With `enforce`, the webhook's failure policy is `Fail`: while no operator replica answers, pods in package namespaces cannot be created. Run two replicas (`replicas: 2`). The operator issues the webhook's certificate itself, shares it between replicas through a Secret, and renews it ahead of expiry, so kubepkg does not depend on a certificate manager it may be the one installing.

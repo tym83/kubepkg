@@ -23,8 +23,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/fluxcd/pkg/apis/kustomize"
+	"k8s.io/apimachinery/pkg/types"
 	"path"
 	"path/filepath"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -406,4 +409,32 @@ func sameComponents(a []v1.ComponentSnapshot, b []desiredComponent) bool {
 		}
 	}
 	return true
+}
+
+// PackageNamespaces maps each namespace installed packages put components
+// in to those packages' names.
+func PackageNamespaces(ctx context.Context, c client.Reader) (map[string][]string, error) {
+	var pkgs v1.PackageList
+	if err := c.List(ctx, &pkgs); err != nil {
+		return nil, err
+	}
+	out := map[string][]string{}
+	for i := range pkgs.Items {
+		p := &pkgs.Items[i]
+		src := &v1.PackageSource{}
+		if err := c.Get(ctx, types.NamespacedName{Name: p.Name}, src); err != nil {
+			continue
+		}
+		v := findVariant(src, variantName(p))
+		if v == nil {
+			continue
+		}
+		for _, comp := range enabledComponents(p, v) {
+			ns, _ := placement(p, comp)
+			if !slices.Contains(out[ns], p.Name) {
+				out[ns] = append(out[ns], p.Name)
+			}
+		}
+	}
+	return out, nil
 }

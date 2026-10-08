@@ -335,7 +335,7 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 		return err
 	}
 	if certs != nil {
-		mgr.GetWebhookServer().Register("/mutate-pods", &webhook.Admission{Handler: &admission.Handler{Reader: mgr.GetClient(), Decoder: ctradmission.NewDecoder(scheme)}})
+		mgr.GetWebhookServer().Register("/mutate-pods", &webhook.Admission{Handler: &admission.Handler{Reader: mgr.GetClient(), Decoder: ctradmission.NewDecoder(scheme), Recorder: mgr.GetEventRecorder("kubepkg-image-policy")}})
 		if err := mgr.Add(certs); err != nil {
 			return err
 		}

@@ -21,6 +21,7 @@ package cli
 
 import (
 	"fmt"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/discovery"
 	"strings"
 
@@ -82,6 +83,9 @@ func (c *cluster) client() (client.Client, error) {
 	if err := v1.AddToSchemeForGroup(c.apiGroup)(scheme); err != nil {
 		return nil, err
 	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		return nil, err
+	}
 	if err := checkServed(cfg, c.apiGroup); err != nil {
 		return nil, err
 	}
@@ -135,6 +139,6 @@ func NewRootCommand(o Options) *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), version.Version)
 		},
 	})
-	root.AddCommand(initCmd(), validateCmd(), imagesCmd(), buildCmd(), pushCmd(), repoCmd(cl), trustCmd(), clusterCmd(cl), setCmd(cl), searchCmd(cl), installCmd(cl), adoptCmd(cl), planCmd(cl), renderCmd(cl), bundleCmd(cl), sbomCmd(cl), scanCmd(cl), removeCmd(cl), listCmd(cl), historyCmd(cl), rollbackCmd(cl))
+	root.AddCommand(initCmd(), validateCmd(), imagesCmd(cl), buildCmd(), pushCmd(), repoCmd(cl), trustCmd(), clusterCmd(cl), setCmd(cl), searchCmd(cl), installCmd(cl), adoptCmd(cl), planCmd(cl), renderCmd(cl), bundleCmd(cl), sbomCmd(cl), scanCmd(cl), removeCmd(cl), listCmd(cl), historyCmd(cl), rollbackCmd(cl))
 	return root
 }
