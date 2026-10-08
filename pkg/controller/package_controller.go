@@ -330,6 +330,9 @@ func (r *PackageReconciler) progress(ctx context.Context, pkg *v1.Package, rev *
 		waiting := ""
 		if !s.Ready {
 			waiting = c.snapshot.Name
+			if s.Progressing && s.Message != "" {
+				waiting += ": " + s.Message
+			}
 		} else if len(c.readyWhen) > 0 {
 			why, err := r.readyWhenMet(ctx, c.readyWhen, c.backend.Namespace)
 			if err != nil {
