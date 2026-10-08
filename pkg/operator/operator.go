@@ -111,6 +111,8 @@ type Options struct {
 	MetricsAddr string
 	ProbeAddr   string
 	LeaderElect bool
+	// PackageWorkers is how many packages are reconciled at once.
+	PackageWorkers int
 	// LeaderElectionID defaults to <binary>.<group>.
 	LeaderElectionID string
 }
@@ -127,6 +129,7 @@ func DefaultOptions() *Options {
 		Policy:         repo.AllowAll{},
 		CacheDir:       filepath.Join(os.TempDir(), "kubepkg"),
 		NelmBinary:     "nelm",
+		PackageWorkers: 4,
 		WebhookPort:    9443,
 		WebhookService: "kubepkg-webhook", WebhookSecret: "kubepkg-webhook-tls", WebhookConfig: "kubepkg-images",
 		MetricsAddr: ":8080",
@@ -163,6 +166,7 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.MetricsAddr, "metrics-bind-address", o.MetricsAddr, "metrics endpoint")
 	fs.StringVar(&o.ProbeAddr, "health-probe-bind-address", o.ProbeAddr, "health probe endpoint")
 	fs.BoolVar(&o.LeaderElect, "leader-elect", o.LeaderElect, "enable leader election")
+	fs.IntVar(&o.PackageWorkers, "package-workers", o.PackageWorkers, "packages reconciled at once; an install that waits for readiness holds one")
 }
 
 // fetcher downloads charts and package trees with the operator's
@@ -318,6 +322,7 @@ func Run(ctx context.Context, cfg *rest.Config, o *Options) error {
 		APIs:         &controller.DiscoveryAPIs{Client: dc},
 		CRDs:         &controller.MetadataCRDs{Client: mgr.GetClient()},
 		Repositories: repos,
+		Workers:      o.PackageWorkers,
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		return err

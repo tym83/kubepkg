@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	crcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"slices"
 	"sort"
 	"strconv"
@@ -67,6 +68,11 @@ type PackageReconciler struct {
 	// Repositories, when set, selects versions from repository indexes
 	// for packages without a hand-written PackageSource.
 	Repositories *Repositories
+	// Workers is how many packages are reconciled at once; default 1. A
+	// synchronous backend holds a worker until a component is ready, so
+	// with one worker every other package, dependents of packages that
+	// are already ready included, waits behind the slowest install.
+	Workers int
 }
 
 // Reconcile is the main loop.
@@ -1009,6 +1015,7 @@ func (r *PackageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	})
 	b := ctrl.NewControllerManagedBy(mgr).
 		Named("kubepkg-package").
+		WithOptions(crcontroller.Options{MaxConcurrentReconciles: max(r.Workers, 1)}).
 		For(&v1.Package{}).
 		Watches(&v1.PackageSource{}, sameName).
 		Watches(&v1.Package{}, waiting)
