@@ -6,13 +6,11 @@
 #   KUBE_CONTEXT   the cluster, kubepkg with the helm backend in kubepkg-system
 #   IMAGE_TAG      operator image of the version under test
 #   WORKERS        packageWorkers to run with (default 4)
-#   MAX_LAG        seconds C may take to get ready after B (default 90)
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 : "${KUBE_CONTEXT:?}" "${IMAGE_TAG:?}"
 WORKERS=${WORKERS:-4}
-MAX_LAG=${MAX_LAG:-90}
 K="kubectl --context ${KUBE_CONTEXT}"
 
 step() { printf '\n=== %s\n' "$(date +%H:%M:%S) $*"; }
@@ -84,7 +82,7 @@ done
 [[ -n "${b_at}" && -n "${c_at}" ]] || fail "B ready: ${b_at:-never}, C ready: ${c_at:-never}"
 lag=$(( c_at - b_at )); a_ready=no; ready slow-a && a_ready=yes
 echo "  B ready after $(( b_at - start ))s, C ${lag}s after B; A ready by then: ${a_ready}"
-(( lag <= MAX_LAG )) || fail "C waited ${lag}s after its requirement was ready"
+[[ "${a_ready}" == no ]] || fail "B and C waited for the slow install of A to finish"
 
 step "clean up"
 cleanup
