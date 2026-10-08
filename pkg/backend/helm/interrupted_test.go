@@ -80,3 +80,18 @@ func TestAReleaseLeftPendingIsRecovered(t *testing.T) {
 		t.Fatal("a deployed release was touched")
 	}
 }
+
+func TestForceConflictsOnlyForServerSideReleases(t *testing.T) {
+	cfg := &action.Configuration{Releases: storage.Init(driver.NewMemory())}
+	for v, method := range map[int]string{1: "", 2: "csa", 3: "ssa"} {
+		rel := &releasev1.Release{Name: "app", Namespace: "app", Version: v, ApplyMethod: method, Info: &releasev1.Info{Status: common.StatusSuperseded}}
+		if err := cfg.Releases.Create(rel); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for rev, want := range map[int]bool{1: false, 2: false, 3: true, 0: true} {
+		if got := appliedServerSide(cfg, "app", rev); got != want {
+			t.Errorf("revision %d: %v, want %v", rev, got, want)
+		}
+	}
+}

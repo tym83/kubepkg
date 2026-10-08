@@ -148,7 +148,10 @@ func (b *Backend) Apply(ctx context.Context, c backend.Component) (backend.State
 	// refuse every upgrade with a field manager conflict, where Helm 3's
 	// client-side apply simply wrote the chart's values. Keep those
 	// semantics: the chart's values win.
-	up.ForceConflicts = true
+	// Helm keeps applying a release the way it was last applied. Forcing
+	// conflicts exists only with server-side apply; a release Helm 3
+	// installed is applied client-side, which overwrites anyway.
+	up.ForceConflicts = appliedServerSide(cfg, c.ReleaseName, 0)
 	up.TakeOwnership = c.Adopt
 	if c.UpgradeCRDs == "Create" || c.UpgradeCRDs == "CreateReplace" {
 		if err := applyCRDs(ctx, b.getter, ch, values); err != nil {
@@ -220,7 +223,7 @@ func (b *Backend) Rollback(ctx context.Context, c backend.Component, toRevision 
 	rb.WaitStrategy = kube.StatusWatcherStrategy
 	rb.Timeout = timeout(c)
 	rb.MaxHistory = b.MaxHistory
-	rb.ForceConflicts = true // see Apply
+	rb.ForceConflicts = appliedServerSide(cfg, c.ReleaseName, toRevision) // see Apply
 	if err := rb.Run(c.ReleaseName); err != nil {
 		return b.stateAfter(ctx, c, fmt.Errorf("roll back %s to revision %d: %w", c.Key(), toRevision, err))
 	}

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/release"
 	"helm.sh/helm/v4/pkg/release/common"
 	releasev1 "helm.sh/helm/v4/pkg/release/v1"
 	"helm.sh/helm/v4/pkg/storage/driver"
@@ -85,4 +86,22 @@ func (b *Backend) recoverInterrupted(cfg *action.Configuration, c backend.Compon
 	}
 	b.Logger.Info("interrupted Helm release marked failed", "release", c.Key(), "was", string(status), "revision", rel.Version)
 	return "", nil
+}
+
+// appliedServerSide reports whether a release revision, the last one for
+// revision 0, was applied with server-side apply, which Helm then keeps
+// using for it.
+func appliedServerSide(cfg *action.Configuration, name string, revision int) bool {
+	var r release.Releaser
+	var err error
+	if revision == 0 {
+		r, err = cfg.Releases.Last(name)
+	} else {
+		r, err = cfg.Releases.Get(name, revision)
+	}
+	if err != nil {
+		return true
+	}
+	rel, ok := r.(*releasev1.Release)
+	return !ok || rel.ApplyMethod == string(releasev1.ApplyMethodServerSideApply)
 }
