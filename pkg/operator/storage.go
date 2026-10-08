@@ -19,7 +19,9 @@ package operator
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -42,21 +44,40 @@ type storageMigration struct {
 	// Version is the storage version; Kinds by their plural resource.
 	Version string
 	Kinds   map[string]string
+	// Retry is how long to wait before trying failed kinds again; 5m
+	// when zero.
+	Retry time.Duration
 }
 
 var crdGVK = schema.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}
 
-// Start migrates once and returns; the manager runs it on the leader.
+// Start migrates, retrying what fails until everything is done: an
+// operator upgraded before its CRDs, for one, cannot list in the new
+// version until they arrive. The manager runs it on the leader.
 func (m *storageMigration) Start(ctx context.Context) error {
 	logger := log.FromContext(ctx).WithName("storage-migration")
-	for plural, kind := range m.Kinds {
-		if err := m.migrate(ctx, plural, kind); err != nil {
-			// Not fatal: the operator works the same, and the next start
-			// tries again.
-			logger.Error(err, "objects not moved to the storage version", "resource", plural)
+	retry := m.Retry
+	if retry == 0 {
+		retry = 5 * time.Minute
+	}
+	pending := maps.Clone(m.Kinds)
+	for {
+		for plural, kind := range pending {
+			if err := m.migrate(ctx, plural, kind); err != nil {
+				logger.Error(err, "objects not moved to the storage version yet; retrying", "resource", plural, "in", retry)
+				continue
+			}
+			delete(pending, plural)
+		}
+		if len(pending) == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(retry):
 		}
 	}
-	return nil
 }
 
 // NeedLeaderElection is true: one replica migrates.

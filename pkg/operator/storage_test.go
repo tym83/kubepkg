@@ -18,12 +18,15 @@ package operator
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	v1 "github.com/tym83/kubepkg/api/v1"
 )
@@ -64,5 +67,37 @@ func TestObjectsMoveToTheStorageVersion(t *testing.T) {
 	}
 	if stored, _, _ := unstructured.NestedStringSlice(got.Object, "status", "storedVersions"); len(stored) != 1 || stored[0] != "v1" {
 		t.Errorf("stored versions: %v", stored)
+	}
+}
+
+func TestMigrationRetriesUntilItSucceeds(t *testing.T) {
+	crd := &unstructured.Unstructured{}
+	crd.SetGroupVersionKind(crdGVK)
+	crd.SetName("packages.kubepkg.dev")
+	_ = unstructured.SetNestedStringSlice(crd.Object, []string{"v1beta1", "v1"}, "status", "storedVersions")
+	sch := runtime.NewScheme()
+	if err := v1.AddToScheme(sch); err != nil {
+		t.Fatal(err)
+	}
+	failures := 2
+	c := fake.NewClientBuilder().WithScheme(sch).WithObjects(crd).WithStatusSubresource(crd).
+		WithInterceptorFuncs(interceptor.Funcs{List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if failures > 0 {
+				failures--
+				return errors.New("the server could not find the requested resource")
+			}
+			return cl.List(ctx, list, opts...)
+		}}).Build()
+	m := &storageMigration{Reader: c, Writer: c, Group: "kubepkg.dev", Version: "v1", Kinds: map[string]string{"packages": "Package"}, Retry: time.Millisecond}
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := &unstructured.Unstructured{}
+	got.SetGroupVersionKind(crdGVK)
+	if err := c.Get(context.Background(), client.ObjectKey{Name: "packages.kubepkg.dev"}, got); err != nil {
+		t.Fatal(err)
+	}
+	if stored, _, _ := unstructured.NestedStringSlice(got.Object, "status", "storedVersions"); len(stored) != 1 {
+		t.Fatalf("stored versions after retries: %v", stored)
 	}
 }
