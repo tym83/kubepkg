@@ -36,7 +36,8 @@ mirror: ""
 # kubernetes.io/dockerconfigjson Secrets with credentials for the
 # registries charts and package trees come from (helm and werf backends).
 # A bare name is a Secret in the release namespace; namespace/name works
-# too. They are read on every pull, so rotated credentials apply at once.
+# too. They are read on every pull, so rotated credentials apply at once;
+# one that does not exist is skipped with a warning.
 registrySecrets: []
 
 # Keep pods in package namespaces on the images their packages pin:
