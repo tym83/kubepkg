@@ -211,7 +211,7 @@ helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --rese
   --set 'registrySecrets={registry-creds}'
 ```
 
-The operator reads the Secrets on every pull, so rotated credentials apply without a restart. Each registry gets the entry for its host, and one Secret can hold several. An operator that runs outside the cluster can use a Docker config file instead, with `--registry-config`; the Secrets are tried first. This applies to OCI registries with the helm and werf backends. Flux and Argo CD pull charts themselves, with their own credentials.
+The operator reads the Secrets on every pull, so rotated credentials apply without a restart. A Secret that does not exist means no credentials: the operator logs a warning once and pulls anonymously until it appears. A distribution can therefore set `registrySecrets` by default and leave creating the Secret to the users who need it. Each registry gets the entry for its host, and one Secret can hold several. An operator that runs outside the cluster can use a Docker config file instead, with `--registry-config`; the Secrets are tried first. This applies to OCI registries with the helm and werf backends. Flux and Argo CD pull charts themselves, with their own credentials.
 
 ## Mirrors and air-gapped clusters
 

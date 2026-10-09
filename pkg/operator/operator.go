@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -177,27 +176,15 @@ func (env Env) fetcher() *source.Fetcher {
 	if len(o.RegistrySecrets) > 0 {
 		secrets := o.RegistrySecrets
 		cs, csErr := kubernetes.NewForConfig(env.Config)
+		var load func(context.Context) ([][]byte, error)
+		if csErr == nil {
+			load = registrySecrets(cs, secrets, ctrl.Log.WithName("registry-credentials"))
+		}
 		f.Credentials = source.DockerConfigCredentials(func(ctx context.Context) ([][]byte, error) {
 			if csErr != nil {
 				return nil, csErr
 			}
-			var out [][]byte
-			for _, ref := range secrets {
-				ns, name, ok := strings.Cut(ref, "/")
-				if !ok {
-					return nil, fmt.Errorf("--registry-secret %q: want namespace/name", ref)
-				}
-				sec, err := cs.CoreV1().Secrets(ns).Get(ctx, name, metav1.GetOptions{})
-				if err != nil {
-					return nil, fmt.Errorf("secret %s: %w", ref, err)
-				}
-				raw, ok := sec.Data[corev1.DockerConfigJsonKey]
-				if !ok {
-					return nil, fmt.Errorf("secret %s has no %s", ref, corev1.DockerConfigJsonKey)
-				}
-				out = append(out, raw)
-			}
-			return out, nil
+			return load(ctx)
 		})
 	}
 	return f
