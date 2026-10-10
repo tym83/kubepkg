@@ -18,7 +18,13 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -51,5 +57,56 @@ func ResolveValues(ctx context.Context, secrets kubernetes.Interface, c Componen
 		}
 		out = source.MergeValues(out, v)
 	}
+	out, err := AcceptedBySchema(out, c.ChartDir)
+	if err != nil {
+		return nil, err
+	}
 	return source.MergeValues(out, c.Values), nil
+}
+
+// AcceptedBySchema leaves out of platform values the top-level keys a
+// chart's values.schema.json does not accept. Platform values go to every
+// component, and a chart whose schema forbids additional properties would
+// refuse them all for one key meant for other charts. The package's own
+// values are not filtered: a wrong key there is a mistake worth seeing.
+func AcceptedBySchema(platform map[string]any, chartDir string) (map[string]any, error) {
+	if chartDir == "" || len(platform) == 0 {
+		return platform, nil
+	}
+	raw, err := os.ReadFile(filepath.Join(chartDir, "values.schema.json"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return platform, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var schema struct {
+		AdditionalProperties *bool                      `json:"additionalProperties"`
+		Properties           map[string]json.RawMessage `json:"properties"`
+		PatternProperties    map[string]json.RawMessage `json:"patternProperties"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		// Helm will report a broken schema; nothing to filter by.
+		return platform, nil
+	}
+	if schema.AdditionalProperties == nil || *schema.AdditionalProperties {
+		return platform, nil
+	}
+	var patterns []*regexp.Regexp
+	for p := range schema.PatternProperties {
+		if re, err := regexp.Compile(p); err == nil {
+			patterns = append(patterns, re)
+		}
+	}
+	out := map[string]any{}
+	for k, v := range platform {
+		_, ok := schema.Properties[k]
+		for _, re := range patterns {
+			ok = ok || re.MatchString(k)
+		}
+		if ok {
+			out[k] = v
+		}
+	}
+	return out, nil
 }

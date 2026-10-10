@@ -29,7 +29,7 @@ import (
 func TestAMissingRegistrySecretMeansNoCredentials(t *testing.T) {
 	present := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: "kubepkg-system", Name: "creds"},
 		Data: map[string][]byte{corev1.DockerConfigJsonKey: []byte(`{"auths":{}}`)}}
-	cs := fake.NewSimpleClientset(present)
+	cs := fake.NewClientset(present)
 	var warnings int
 	log := funcr.New(func(_, _ string) { warnings++ }, funcr.Options{})
 	load := registrySecrets(cs, []string{"kubepkg-system/creds", "kubepkg-system/missing"}, log)
