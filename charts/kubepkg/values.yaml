@@ -48,6 +48,11 @@ registrySecrets: []
 #            some package pins no images stays at warn
 # The operator issues the webhook's certificate itself.
 imagePolicy: "off"
+# Namespaces the image policy never applies to, even when packages install
+# there: the cluster and tools other than packages start pods in them. A
+# namespace labelled kubepkg.dev/image-policy=off by an admin is left
+# alone too.
+imagePolicyExclude: [kube-system, kube-public, kube-node-lease]
 
 # Let the operator pull from registries over plain HTTP (test registries only).
 plainHTTP: false

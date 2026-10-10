@@ -908,3 +908,36 @@ func TestPackageNamespacesGetTheImagePolicy(t *testing.T) {
 		t.Fatal("the label stayed with the policy off")
 	}
 }
+
+func TestSystemNamespacesAndAdminsKeepTheirImagePolicy(t *testing.T) {
+	e := newEnv(t)
+	e.r.Profile.ImagePolicy = "enforce"
+	e.r.Profile.ImagePolicyExclude = DefaultImagePolicyExclude()
+	e.create(
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kube-system", Labels: map[string]string{"kubepkg.dev/image-policy": "enforce"}}},
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "frozen", Labels: map[string]string{"kubepkg.dev/image-policy": "off"}}},
+	)
+	for name, ns := range map[string]string{"coredns": "kube-system", "legacy": "frozen", "app": "apps"} {
+		src := mkSource(name, "1.0.0", true, "c")
+		src.Spec.Images = []string{"quay.io/org/" + name + ":1@sha256:" + strings.Repeat("a", 64)}
+		src.Spec.Variants[0].Components[0].Install.Namespace = ns
+		e.create(src, &v1.Package{ObjectMeta: metav1.ObjectMeta{Name: name}})
+		e.reconcile(name)
+	}
+	label := func(name string) string {
+		ns := &corev1.Namespace{}
+		if err := e.c.Get(context.Background(), types.NamespacedName{Name: name}, ns); err != nil {
+			t.Fatal(err)
+		}
+		return ns.Labels["kubepkg.dev/image-policy"]
+	}
+	if got := label("kube-system"); got != "" {
+		t.Errorf("kube-system: %q; a system namespace must not be locked down", got)
+	}
+	if got := label("frozen"); got != "off" {
+		t.Errorf("frozen: %q; the admin's off must stand", got)
+	}
+	if got := label("apps"); got != "enforce" {
+		t.Errorf("apps: %q", got)
+	}
+}
