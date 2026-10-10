@@ -53,6 +53,9 @@ spec:
             {{- $policy := .Values.imagePolicy | default "off" }}
             {{- if ne $policy "off" }}
             - --image-policy={{ $policy }}
+            {{- if hasKey .Values "imagePolicyExclude" }}
+            - --image-policy-exclude={{ join "," .Values.imagePolicyExclude }}
+            {{- end }}
             - --webhook-service={{ .Release.Name }}-webhook
             - --webhook-secret={{ .Release.Name }}-webhook-tls
             - --webhook-config={{ .Release.Name }}-images

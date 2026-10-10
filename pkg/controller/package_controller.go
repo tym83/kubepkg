@@ -870,13 +870,18 @@ const (
 // the namespace when the policy is off. A namespace where some package
 // pins no images gets warn, since enforce would refuse its pods.
 func (r *PackageReconciler) setImagePolicy(ctx context.Context, name string, labels map[string]string, unpinned bool) error {
+	ns := &corev1.Namespace{}
+	if err := r.Get(ctx, types.NamespacedName{Name: name}, ns); client.IgnoreNotFound(err) != nil {
+		return err
+	}
+	current, labelled := ns.Labels[admission.LabelImagePolicy]
+	if current == admission.ModeOff {
+		// The cluster's admin turned it off here; that stands.
+		return nil
+	}
 	mode := r.Profile.ImagePolicy
-	if mode == "" || mode == admission.ModeOff {
-		ns := &corev1.Namespace{}
-		if err := r.Get(ctx, types.NamespacedName{Name: name}, ns); err != nil {
-			return client.IgnoreNotFound(err)
-		}
-		if _, ok := ns.Labels[admission.LabelImagePolicy]; !ok {
+	if mode == "" || mode == admission.ModeOff || slices.Contains(r.Profile.ImagePolicyExclude, name) {
+		if !labelled || (current != admission.ModeWarn && current != admission.ModeEnforce) {
 			return nil
 		}
 		patch := client.MergeFrom(ns.DeepCopy())

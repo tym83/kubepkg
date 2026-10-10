@@ -36,6 +36,10 @@ type Profile struct {
 	// ImagePolicy is off, warn or enforce: whether package namespaces get
 	// the label that turns the image admission webhook on there.
 	ImagePolicy string
+	// ImagePolicyExclude are namespaces the image policy never applies to,
+	// however many packages install there: shared system namespaces, where
+	// the cluster itself and tools other than packages start pods.
+	ImagePolicyExclude []string
 }
 
 // Annotations kubepkg reads and writes.
@@ -74,5 +78,10 @@ const (
 
 // DefaultProfile is a plain kubepkg installation.
 func DefaultProfile() Profile {
-	return Profile{Group: v1.GroupName}
+	return Profile{Group: v1.GroupName, ImagePolicyExclude: DefaultImagePolicyExclude()}
+}
+
+// DefaultImagePolicyExclude are the shared system namespaces.
+func DefaultImagePolicyExclude() []string {
+	return []string{"kube-system", "kube-public", "kube-node-lease"}
 }

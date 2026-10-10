@@ -152,6 +152,15 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.ArgoProject, "argo-project", o.ArgoProject, "Argo CD project of the Applications (argo backend, default default)")
 	fs.StringVar(&o.Mirror, "mirror", o.Mirror, "oci:// registry path to fetch every chart and package tree from, for air-gapped clusters")
 	fs.StringVar(&o.Profile.ImagePolicy, "image-policy", admission.ModeOff, "off, warn or enforce: keep pods in package namespaces on the images their packages pin")
+	fs.Func("image-policy-exclude", "comma-separated namespaces the image policy never applies to (default "+strings.Join(controller.DefaultImagePolicyExclude(), ",")+")", func(v string) error {
+		o.Profile.ImagePolicyExclude = nil
+		for _, n := range strings.Split(v, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				o.Profile.ImagePolicyExclude = append(o.Profile.ImagePolicyExclude, n)
+			}
+		}
+		return nil
+	})
 	fs.IntVar(&o.WebhookPort, "webhook-port", o.WebhookPort, "port of the image policy webhook")
 	fs.StringVar(&o.WebhookService, "webhook-service", o.WebhookService, "Service in front of the image policy webhook")
 	fs.StringVar(&o.WebhookNamespace, "webhook-namespace", os.Getenv("POD_NAMESPACE"), "namespace of that Service and of the certificate Secret")
