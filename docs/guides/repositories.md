@@ -81,7 +81,7 @@ kubepkg repo index dist -o site/index.yaml \
 - every chart is pinned by digest. Charts without one are downloaded and pinned in the index, and `--verify` downloads pinned charts again to check them;
 - with `--merge`, versions published before are kept even when their recipes are gone. A version rebuilt under the same version and build must come out identical: **published versions never change**. A changed recipe needs a new build number.
 
-The repository in [tym83/kubepkg-recipes](https://github.com/tym83/kubepkg-recipes) does exactly this from GitHub Actions. Copy its `scripts/build-all.sh` and workflow as a starting point.
+The repository in [kuberoot-dev/kubepkg-recipes](https://github.com/kuberoot-dev/kubepkg-recipes) does exactly this from GitHub Actions. Copy its `scripts/build-all.sh` and workflow as a starting point.
 
 ## Signing with plain keys
 
@@ -207,7 +207,7 @@ Charts and package trees in a registry that needs a login are pulled with creden
 ```bash
 kubectl -n kubepkg-system create secret docker-registry registry-creds \
   --docker-server=registry.example.org --docker-username=bot --docker-password="$TOKEN"
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reset-then-reuse-values \
+helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --reset-then-reuse-values \
   --set 'registrySecrets={registry-creds}'
 ```
 

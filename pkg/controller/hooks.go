@@ -25,9 +25,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/backend"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 // runHooks runs the pre-upgrade hooks of a revision that moves the

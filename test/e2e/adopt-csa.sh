@@ -21,7 +21,7 @@ step "operator under test"
 helm --kube-context "${KUBE_CONTEXT}" upgrade kubepkg "${ROOT}/charts/kubepkg" -n kubepkg-system --reuse-values --set image.tag="${IMAGE_TAG}" --wait >/dev/null
 
 step "a release installed with client-side apply, as by Helm 3"
-helm --kube-context "${KUBE_CONTEXT}" install csa-ksm oci://ghcr.io/tym83/kubepkg-packages/kube-state-metrics/kube-state-metrics \
+helm --kube-context "${KUBE_CONTEXT}" install csa-ksm oci://ghcr.io/kuberoot-dev/kubepkg-packages/kube-state-metrics/kube-state-metrics \
   --version 2.20.0-3 -n "${NS}" --create-namespace --server-side=false --wait >/dev/null
 echo "  apply method: $(${K} -n "${NS}" get secret -l name=csa-ksm,owner=helm -o jsonpath='{.items[0].data.release}' | base64 -d | base64 -d | gunzip | python3 -c 'import sys, json; print(json.load(sys.stdin).get("apply_method") or "csa (unset)")')"
 
@@ -38,7 +38,7 @@ spec:
     - name: default
       components:
         - name: ksm
-          chart: {repository: oci://ghcr.io/tym83/kubepkg-packages/kube-state-metrics, name: kube-state-metrics, version: 2.20.0-3, digest: "sha256:2bf8279f5f6195dfb6332dfb8c1251bdcf5a00754dd97102411a614f685d329e"}
+          chart: {repository: oci://ghcr.io/kuberoot-dev/kubepkg-packages/kube-state-metrics, name: kube-state-metrics, version: 2.20.0-3, digest: "sha256:2bf8279f5f6195dfb6332dfb8c1251bdcf5a00754dd97102411a614f685d329e"}
           install: {namespace: ${NS}, releaseName: csa-ksm}
 ---
 apiVersion: kubepkg.dev/v1

@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${ROOT}/docs/examples
 : "${KUBE_CONTEXT:?}"
-INDEX=https://tym83.github.io/kubepkg-recipes/index.yaml
+INDEX=https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml
 WORK=$(mktemp -d)
 trap 'rm -rf "${WORK}"' EXIT
 mkdir -p "${OUT}"
@@ -51,7 +51,7 @@ settled() { # package revision: wait until the revision is applied
 kubectl delete packages.kubepkg.dev --all --wait --timeout 900s >/dev/null
 kubectl delete repositories.kubepkg.dev main --ignore-not-found >/dev/null
 
-curl -fsSL https://raw.githubusercontent.com/tym83/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
+curl -fsSL https://raw.githubusercontent.com/kuberoot-dev/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
 
 fresh repo-add
 run repo-add "kubepkg repo add main ${INDEX} --public-key index.pub"

@@ -35,8 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
 )
 
 const (

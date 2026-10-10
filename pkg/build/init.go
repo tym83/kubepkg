@@ -33,8 +33,8 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/pkg/images"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/images"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 // InitInput describes the recipe Init writes. Exactly one of Chart and

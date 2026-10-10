@@ -40,7 +40,7 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
 )
 
 // Runner runs nelm with arguments and returns its combined output.

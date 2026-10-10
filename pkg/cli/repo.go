@@ -29,8 +29,8 @@ import (
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/tym83/kubepkg/pkg/repo"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 func repoCmd(cl *cluster) *cobra.Command {

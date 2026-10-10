@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	v1 "github.com/tym83/kubepkg/api/v1"
+	v1 "github.com/kuberoot-dev/kubepkg/api/v1"
 )
 
 func TestObjectsMoveToTheStorageVersion(t *testing.T) {

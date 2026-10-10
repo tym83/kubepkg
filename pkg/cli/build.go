@@ -25,9 +25,9 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/build"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/build"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 func buildCmd() *cobra.Command {

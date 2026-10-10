@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
 )
 
 type fileFetcher struct{}

@@ -29,9 +29,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tym83/kubepkg/pkg/images"
-	"github.com/tym83/kubepkg/pkg/sbom"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/images"
+	"github.com/kuberoot-dev/kubepkg/pkg/sbom"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 // severities in the order reports show them.

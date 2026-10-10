@@ -29,8 +29,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/resolve"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/resolve"
 )
 
 // APIs lists group versions the API server serves, for "api:" capabilities.

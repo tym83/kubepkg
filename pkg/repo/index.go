@@ -45,8 +45,8 @@ import (
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 // IndexKind is the kind of an index document.

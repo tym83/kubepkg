@@ -13,7 +13,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 : "${HUB_CONTEXT:?}" "${HUB_KUBECONFIG:?}" "${MEMBER_KUBECONFIG:?}" "${MEMBER_CONTEXT:?}" "${IMAGE_TAG:?}"
-INDEX=https://tym83.github.io/kubepkg-recipes/index.yaml
+INDEX=https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml
 PKG=kube-state-metrics
 NS=kube-state-metrics
 K="kubectl --context ${HUB_CONTEXT}"
@@ -37,7 +37,7 @@ set_values() { # set json-values
 }
 done_everywhere() { [[ "$(${K} get packagesets.kubepkg.dev "$1" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')" == True ]]; }
 
-curl -fsSL https://raw.githubusercontent.com/tym83/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
+curl -fsSL https://raw.githubusercontent.com/kuberoot-dev/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
 (cd "${ROOT}" && go build -o "${WORK}/" ./cmd/kubepkg)
 KP=("${WORK}/kubepkg" --context "${HUB_CONTEXT}")
 

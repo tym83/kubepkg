@@ -36,7 +36,7 @@ import (
 	"helm.sh/helm/v4/pkg/chart/loader"
 	"helm.sh/helm/v4/pkg/engine"
 
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 const operatorYAML = `apiVersion: v1

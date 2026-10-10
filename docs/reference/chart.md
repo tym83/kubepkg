@@ -1,6 +1,6 @@
 # Helm chart values
 
-The operator's chart is published at `oci://ghcr.io/tym83/charts/kubepkg`, versioned with kubepkg. These are its values and their defaults, taken from the chart itself:
+The operator's chart is published at `oci://ghcr.io/kuberoot-dev/charts/kubepkg`, versioned with kubepkg. These are its values and their defaults, taken from the chart itself:
 
 ```yaml title="charts/kubepkg/values.yaml"
 --8<-- "charts/kubepkg/values.yaml"

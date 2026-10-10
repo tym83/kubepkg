@@ -32,10 +32,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/backend"
-	"github.com/tym83/kubepkg/pkg/resolve"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/resolve"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 // Preparer puts a component's chart where the backend can read it.

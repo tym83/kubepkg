@@ -33,10 +33,10 @@ import (
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/controller"
-	"github.com/tym83/kubepkg/pkg/repo"
-	"github.com/tym83/kubepkg/pkg/resolve"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/controller"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/resolve"
 )
 
 // AnnotationDependency marks a Package the CLI installed because another

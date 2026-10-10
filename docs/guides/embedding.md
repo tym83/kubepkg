@@ -21,7 +21,7 @@ Releases are labelled `kubepkg.dev/package: <name>` (under the platform's group 
 
 ```bash
 make crds-for-group GROUP=packages.example.org OUT=dist/crd
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n platform-system \
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n platform-system \
   --set apiGroup=packages.example.org
 kubepkg --api-group packages.example.org list
 ```
@@ -62,8 +62,8 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/tym83/kubepkg/pkg/operator"
-	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/operator"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
 )
 
 // allowedRegistries admits only versions whose charts come from the

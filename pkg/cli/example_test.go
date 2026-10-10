@@ -19,7 +19,7 @@ package cli_test
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/tym83/kubepkg/pkg/cli"
+	"github.com/kuberoot-dev/kubepkg/pkg/cli"
 )
 
 // A distribution's own CLI: its name and API group, and a command of its

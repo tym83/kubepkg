@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/tym83/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
 )
 
 func clusterCmd(cl *cluster) *cobra.Command {

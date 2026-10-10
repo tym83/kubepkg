@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 const crdYAML = `apiVersion: apiextensions.k8s.io/v1

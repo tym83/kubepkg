@@ -36,7 +36,7 @@ spec:
       requires: [$3]
       components:
         - name: ksm
-          chart: {repository: oci://ghcr.io/tym83/kubepkg-packages/kube-state-metrics, name: kube-state-metrics, version: 2.20.0-3, digest: "sha256:2bf8279f5f6195dfb6332dfb8c1251bdcf5a00754dd97102411a614f685d329e"}
+          chart: {repository: oci://ghcr.io/kuberoot-dev/kubepkg-packages/kube-state-metrics, name: kube-state-metrics, version: 2.20.0-3, digest: "sha256:2bf8279f5f6195dfb6332dfb8c1251bdcf5a00754dd97102411a614f685d329e"}
           install: {namespace: $2, releaseName: $1}
 EOF
 }

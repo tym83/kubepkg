@@ -1,4 +1,4 @@
-$ kubepkg render virtualization --format argo --repo https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub | head -40
+$ kubepkg render virtualization --format argo --repo https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml --public-key index.pub | head -40
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -19,7 +19,7 @@ spec:
     chart: cdi-operator
     helm:
       releaseName: operator
-    repoURL: ghcr.io/tym83/kubepkg-packages/cdi
+    repoURL: ghcr.io/kuberoot-dev/kubepkg-packages/cdi
     targetRevision: 1.66.1-2
   syncPolicy:
     automated:

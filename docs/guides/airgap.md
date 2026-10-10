@@ -49,9 +49,9 @@ A package that pins no images can still be bundled. `bundle create` renders its 
 On a machine with internet access:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/tym83/kubepkg-recipes/main/keys/index.pub
+curl -fsSLO https://raw.githubusercontent.com/kuberoot-dev/kubepkg-recipes/main/keys/index.pub
 kubepkg bundle create virtualization cert-manager \
-  --repo https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub \
+  --repo https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml --public-key index.pub \
   -o platform-2026-10.tar
 kubepkg bundle inspect platform-2026-10.tar
 ```
@@ -91,7 +91,7 @@ repositories:
 ```
 
 ```bash
-helm install kubepkg oci://registry.internal/kubepkg/ghcr.io/tym83/charts/kubepkg \
+helm install kubepkg oci://registry.internal/kubepkg/ghcr.io/kuberoot-dev/charts/kubepkg \
   -n kubepkg-system --create-namespace -f values.yaml
 ```
 

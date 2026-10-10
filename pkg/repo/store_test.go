@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
 )
 
 func entry(t *testing.T, version string, build int32) Version {

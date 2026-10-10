@@ -39,6 +39,13 @@ Recipes (`kind: Recipe`) and bundles follow the same rules as the cluster API: w
 
 A platform that embeds kubepkg builds on `api/v1`, `pkg/operator` and `pkg/cli`. Their exported names follow semantic versioning. Other packages may change in any release.
 
+From 1.2.0 the module path is `github.com/kuberoot-dev/kubepkg`; up to 1.1.0 it was `github.com/tym83/kubepkg`, and those versions stay available there. Moving is a change of import paths only:
+
+```bash
+go mod edit -droprequire github.com/tym83/kubepkg -require github.com/kuberoot-dev/kubepkg@v1.2.0
+grep -rl github.com/tym83/kubepkg --include='*.go' . | xargs sed -i 's#github.com/tym83/kubepkg#github.com/kuberoot-dev/kubepkg#g'
+```
+
 ## Kubernetes versions
 
 Each release supports the three newest Kubernetes minor versions at the time it ships; for 1.0 these are 1.35 to 1.37. CI runs the end-to-end tests on the oldest and the newest of them. kubepkg needs only CRDs and its operator, so it usually works on older clusters too, but they are not tested.

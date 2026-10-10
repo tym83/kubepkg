@@ -34,8 +34,8 @@ import (
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/oci"
 
-	"github.com/tym83/kubepkg/pkg/images"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/images"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 func sha256Hex(b []byte) string {

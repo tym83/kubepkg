@@ -39,7 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
 )
 
 // ErrRollbackUnsupported is returned by Rollback. Flux keeps no earlier

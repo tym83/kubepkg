@@ -1,4 +1,4 @@
-module github.com/tym83/kubepkg
+module github.com/kuberoot-dev/kubepkg
 
 go 1.26.5
 

@@ -29,7 +29,7 @@ import (
 	"helm.sh/helm/v4/pkg/storage"
 	"helm.sh/helm/v4/pkg/storage/driver"
 
-	"github.com/tym83/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
 )
 
 func TestAReleaseLeftPendingIsRecovered(t *testing.T) {

@@ -6,12 +6,12 @@ The examples on this page are real output from a test cluster.
 
 ## 1. Install the CLI
 
-Download the binary for your system from the [latest release](https://github.com/tym83/kubepkg/releases/latest) and check it against `SHA256SUMS`:
+Download the binary for your system from the [latest release](https://github.com/kuberoot-dev/kubepkg/releases/latest) and check it against `SHA256SUMS`:
 
 ```bash
 os=$(uname -s | tr A-Z a-z); arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-curl -fsSLO "https://github.com/tym83/kubepkg/releases/latest/download/kubepkg-${os}-${arch}"
-curl -fsSL https://github.com/tym83/kubepkg/releases/latest/download/SHA256SUMS | grep "kubepkg-${os}-${arch}" | shasum -a 256 -c -
+curl -fsSLO "https://github.com/kuberoot-dev/kubepkg/releases/latest/download/kubepkg-${os}-${arch}"
+curl -fsSL https://github.com/kuberoot-dev/kubepkg/releases/latest/download/SHA256SUMS | grep "kubepkg-${os}-${arch}" | shasum -a 256 -c -
 install -m 0755 "kubepkg-${os}-${arch}" /usr/local/bin/kubepkg
 ```
 
@@ -22,7 +22,7 @@ The CLI talks to the cluster in your current kubeconfig context. To pick another
 The operator does the installing. It ships as a Helm chart:
 
 ```bash
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg \
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg \
   --namespace kubepkg-system --create-namespace --wait
 ```
 
@@ -30,10 +30,10 @@ This creates the kubepkg CRDs and starts the operator. By default the operator i
 
 ## 3. Subscribe to a repository
 
-A repository is a signed index of packages. The example repository is built from [tym83/kubepkg-recipes](https://github.com/tym83/kubepkg-recipes). Fetch its public key and add it:
+A repository is a signed index of packages. The example repository is built from [kuberoot-dev/kubepkg-recipes](https://github.com/kuberoot-dev/kubepkg-recipes). Fetch its public key and add it:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/tym83/kubepkg-recipes/main/keys/index.pub
+curl -fsSLO https://raw.githubusercontent.com/kuberoot-dev/kubepkg-recipes/main/keys/index.pub
 ```
 
 ```text

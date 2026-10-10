@@ -40,10 +40,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/admission"
-	"github.com/tym83/kubepkg/pkg/backend"
-	"github.com/tym83/kubepkg/pkg/resolve"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/admission"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/resolve"
 )
 
 const (

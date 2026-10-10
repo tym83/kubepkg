@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
 )
 
 func historyCmd(cl *cluster) *cobra.Command {

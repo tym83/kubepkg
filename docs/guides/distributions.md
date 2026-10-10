@@ -7,7 +7,7 @@ A Kubernetes distribution is a cluster plus a chosen set of components at versio
 3. **platform-wide values**, so settings such as the cluster domain reach every component without each package knowing about them;
 4. **ways to adapt kubepkg itself**: its API group, plugins and Go libraries. See [Embedding in a platform](embedding.md).
 
-This page walks through the first three, using the example repository [tym83/kubepkg-recipes](https://github.com/tym83/kubepkg-recipes).
+This page walks through the first three, using the example repository [kuberoot-dev/kubepkg-recipes](https://github.com/kuberoot-dev/kubepkg-recipes).
 
 ## 1. A repository of your components
 
@@ -100,7 +100,7 @@ stringData:
 ```
 
 ```bash
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reuse-values \
+helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --reuse-values \
   --set valuesSecret=kubepkg-system/platform-values
 ```
 
@@ -124,7 +124,7 @@ repositories:
 ```
 
 ```bash
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace -f values.yaml
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --create-namespace -f values.yaml
 kubepkg install mydistro@2.0.0 --yes
 ```
 

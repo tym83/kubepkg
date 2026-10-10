@@ -21,8 +21,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
 )
 
 func renderStore(t *testing.T) *repo.Store {

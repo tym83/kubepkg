@@ -25,8 +25,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tym83/kubepkg/pkg/resolve"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/resolve"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 // maxIndexBytes bounds a fetched repository index.

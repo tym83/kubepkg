@@ -28,9 +28,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/repo"
-	"github.com/tym83/kubepkg/pkg/resolve"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/resolve"
 )
 
 type servedAPIs map[string]bool

@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
 )
 
 // withCRDs gives the env real CRD ownership over CRDs owned as given.

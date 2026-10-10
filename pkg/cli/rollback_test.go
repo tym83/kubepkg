@@ -19,7 +19,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
 )
 
 func rev(n int64, phase string) v1.PackageRevision {

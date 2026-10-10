@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 const pluginRecipe = `apiVersion: kubepkg.dev/v1alpha1

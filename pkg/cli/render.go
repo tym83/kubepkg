@@ -29,13 +29,13 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/backend"
-	"github.com/tym83/kubepkg/pkg/backend/argo"
-	"github.com/tym83/kubepkg/pkg/backend/flux"
-	"github.com/tym83/kubepkg/pkg/controller"
-	"github.com/tym83/kubepkg/pkg/repo"
-	"github.com/tym83/kubepkg/pkg/resolve"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend/argo"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend/flux"
+	"github.com/kuberoot-dev/kubepkg/pkg/controller"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/resolve"
 )
 
 // RenderFormats are the formats Render writes.

@@ -19,7 +19,7 @@ flowchart LR
 The hub and every member run the same operator:
 
 ```bash
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --create-namespace
 ```
 
 On the members, the repositories can come from the hub, so nothing else needs configuring.
@@ -66,7 +66,7 @@ spec:
   repositories:
     - name: main
       spec:
-        url: https://tym83.github.io/kubepkg-recipes/index.yaml
+        url: https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml
         publicKeys:
           - |
             -----BEGIN PUBLIC KEY-----

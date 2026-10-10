@@ -18,8 +18,8 @@ package cli
 
 import (
 	"fmt"
-	"github.com/tym83/kubepkg/pkg/admission"
-	"github.com/tym83/kubepkg/pkg/controller"
+	"github.com/kuberoot-dev/kubepkg/pkg/admission"
+	"github.com/kuberoot-dev/kubepkg/pkg/controller"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
@@ -32,9 +32,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tym83/kubepkg/pkg/build"
-	"github.com/tym83/kubepkg/pkg/images"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/build"
+	"github.com/kuberoot-dev/kubepkg/pkg/images"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 func userCacheFetcher(plainHTTP bool) (*source.Fetcher, error) {

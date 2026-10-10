@@ -31,10 +31,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/backend/helm"
-	"github.com/tym83/kubepkg/pkg/controller"
-	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend/helm"
+	"github.com/kuberoot-dev/kubepkg/pkg/controller"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
 )
 
 // ReleaseReader reads existing Helm releases.
