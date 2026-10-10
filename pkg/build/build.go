@@ -107,6 +107,12 @@ func Build(ctx context.Context, dir string, opts Options) (*Result, error) {
 		if err := b.chart(n, r.Spec.Charts[n], filepath.Join(tree, n)); err != nil {
 			return nil, fmt.Errorf("chart %s: %w", n, err)
 		}
+		// The chart gets the name and version it is published under now,
+		// so validate, images and render see the .Chart.Name and
+		// .Chart.Version templates will see in the cluster.
+		if err := source.SetChartMeta(filepath.Join(tree, n), n, PublishedVersion(r)); err != nil {
+			return nil, fmt.Errorf("chart %s: %w", n, err)
+		}
 	}
 	src := v1.PackageSource{
 		TypeMeta:   metav1TypeMeta(),
@@ -116,6 +122,12 @@ func Build(ctx context.Context, dir string, opts Options) (*Result, error) {
 	src.Spec.Version = r.Spec.Version
 	src.Spec.Build = r.Spec.Build
 	return &Result{Recipe: r, TreeDir: tree, Source: src}, nil
+}
+
+// PublishedVersion is the chart version a recipe's charts are published
+// under: the package version and the build, 1.21.2-3.
+func PublishedVersion(r *Recipe) string {
+	return fmt.Sprintf("%s-%d", strings.TrimPrefix(r.Spec.Version, "v"), r.Spec.Build)
 }
 
 // Publish pushes every built chart to registry (oci://host/path) as a
@@ -132,7 +144,7 @@ func Publish(ctx context.Context, res *Result, registry string, opts source.Push
 		return out, false, nil
 	}
 	repository := strings.TrimSuffix(registry, "/") + "/" + res.Recipe.Metadata.Name
-	version := fmt.Sprintf("%s-%d", strings.TrimPrefix(res.Recipe.Spec.Version, "v"), res.Recipe.Spec.Build)
+	version := PublishedVersion(res.Recipe)
 	opts.Immutable = true
 	names := make([]string, 0, len(res.Recipe.Spec.Charts))
 	for n := range res.Recipe.Spec.Charts {
