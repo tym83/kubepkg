@@ -173,6 +173,8 @@ The same recipe always builds the same content. A package's identity is that con
 - if the tag already holds the same content, the published artifact is reused, so rebuilding an unchanged recipe on another machine publishes nothing new;
 - if the content differs under the same version and build, the build fails. Bump `build`.
 
+Each chart is published under the name of its entry in `charts` and the version `<version>-<build>`, for example `2.3.0-1`. `appVersion` stays as upstream set it. Templates see the published values: a chart that builds an image tag from `.Chart.Version` asks for `v2.3.0-1`, not `v2.3.0`. `validate`, `images` and `render` show exactly what the cluster will get, so such a tag shows up there. Set the image tag in the chart's values instead.
+
 ## Plugins
 
 A distribution extends builds without changing kubepkg. A **source plugin** fetches a source:

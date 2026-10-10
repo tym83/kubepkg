@@ -501,3 +501,42 @@ spec:
 		}
 	}
 }
+
+func TestTemplatesSeeThePublishedChartVersion(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "chart/Chart.yaml"), "apiVersion: v2\nname: kubeflow-trainer\nversion: 2.3.0\nappVersion: 2.3.0\n")
+	writeFile(t, filepath.Join(dir, "chart/templates/deploy.yaml"), `apiVersion: apps/v1
+kind: Deployment
+metadata: {name: {{ .Chart.Name }}}
+spec:
+  selector: {matchLabels: {app: t}}
+  template:
+    metadata: {labels: {app: t}}
+    spec:
+      containers:
+        - {name: c, image: "example.org/trainer:v{{ .Chart.Version }}"}
+        - {name: d, image: "example.org/helper:v{{ .Chart.AppVersion }}"}
+`)
+	writeFile(t, filepath.Join(dir, RecipeFile), `apiVersion: kubepkg.dev/v1
+kind: Recipe
+metadata: {name: trainer}
+spec:
+  version: 2.3.0
+  build: 1
+  sources: {chart: {dir: chart}}
+  charts: {trainer: {from: [chart]}}
+  package:
+    variants: [{name: default, components: [{name: trainer, path: trainer, install: {namespace: t}}]}]
+`)
+	res, err := Build(context.Background(), dir, Options{Fetcher: &source.Fetcher{CacheDir: t.TempDir()}, WorkDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := RenderedImages(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, " ") != "example.org/helper:v2.3.0 example.org/trainer:v2.3.0-1" {
+		t.Fatalf("images rendered as the cluster will not see them: %v", got)
+	}
+}

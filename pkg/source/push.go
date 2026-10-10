@@ -318,6 +318,29 @@ func pack(dir, prefix string, replace map[string][]byte) ([]byte, string, error)
 	return buf.Bytes(), digest.FromBytes(tarball.Bytes()).String(), nil
 }
 
+// SetChartMeta sets the name and version in a chart's Chart.yaml, as
+// PushChart publishes it.
+func SetChartMeta(dir, name, version string) error {
+	p := filepath.Join(dir, "Chart.yaml")
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return err
+	}
+	meta := map[string]any{}
+	if err := yaml.Unmarshal(raw, &meta); err != nil {
+		return fmt.Errorf("Chart.yaml: %w", err)
+	}
+	if meta["name"] == name && meta["version"] == version {
+		return nil
+	}
+	meta["name"], meta["version"] = name, version
+	out, err := yaml.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, out, 0o644)
+}
+
 // PushChart publishes the chart in dir as a Helm chart in an OCI registry,
 // at <repository>/<name>:<version>, the way helm push does, with name and
 // version set in its Chart.yaml. Helm, Flux, Argo CD and werf all install
