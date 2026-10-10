@@ -22,7 +22,7 @@ jobs:
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             os=${target%/*}; arch=${target#*/}
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
-              -ldflags "-s -w -X github.com/tym83/kubepkg/pkg/version.Version=${GITHUB_REF_NAME}" \
+              -ldflags "-s -w -X github.com/kuberoot-dev/kubepkg/pkg/version.Version=${GITHUB_REF_NAME}" \
               -o "dist/kubepkg-${os}-${arch}" ./cmd/kubepkg
           done
           (cd dist && sha256sum kubepkg-* > SHA256SUMS)

@@ -33,7 +33,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
 )
 
 // ErrRollbackUnsupported is returned by Rollback: packages applied through

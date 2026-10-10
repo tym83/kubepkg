@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 : "${KUBE_CONTEXT:?}" "${IMAGE_TAG:?}"
 PACKAGE=${PACKAGE:-cert-manager}
-INDEX=https://tym83.github.io/kubepkg-recipes/index.yaml
+INDEX=https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml
 K="kubectl --context ${KUBE_CONTEXT}"
 WORK=$(mktemp -d)
 trap 'rm -rf "${WORK}"' EXIT
@@ -64,7 +64,7 @@ spec:
 EOF
 ${K} -n airgap wait --for=condition=Ready pod/airgap --timeout=300s >/dev/null
 (cd "${ROOT}" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "${WORK}/kubepkg" ./cmd/kubepkg)
-curl -fsSL https://raw.githubusercontent.com/tym83/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
+curl -fsSL https://raw.githubusercontent.com/kuberoot-dev/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
 ${K} -n airgap cp "${WORK}/kubepkg" airgap:/work/kubepkg -c bench
 ${K} -n airgap cp "${WORK}/index.pub" airgap:/work/index.pub -c bench
 bench chmod +x /work/kubepkg

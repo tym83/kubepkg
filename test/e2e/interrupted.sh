@@ -24,7 +24,7 @@ helm --kube-context "${KUBE_CONTEXT}" upgrade kubepkg "${ROOT}/charts/kubepkg" -
 
 step "a Helm install killed with SIGKILL mid-way, as on a node reboot"
 ${K} create namespace "${NS}" --dry-run=client -o yaml | ${K} apply -f - >/dev/null
-helm --kube-context "${KUBE_CONTEXT}" install slow-ksm oci://ghcr.io/tym83/kubepkg-packages/kube-state-metrics/kube-state-metrics \
+helm --kube-context "${KUBE_CONTEXT}" install slow-ksm oci://ghcr.io/kuberoot-dev/kubepkg-packages/kube-state-metrics/kube-state-metrics \
   --version 2.20.0-3 -n "${NS}" --set readinessProbe.initialDelaySeconds=150 --wait --timeout 10m >/dev/null 2>&1 &
 helm_pid=$!
 for _ in $(seq 60); do [[ "$(release_status)" == pending-install ]] && break; sleep 2; done
@@ -45,7 +45,7 @@ spec:
     - name: default
       components:
         - name: ksm
-          chart: {repository: oci://ghcr.io/tym83/kubepkg-packages/kube-state-metrics, name: kube-state-metrics, version: 2.20.0-3, digest: "sha256:2bf8279f5f6195dfb6332dfb8c1251bdcf5a00754dd97102411a614f685d329e"}
+          chart: {repository: oci://ghcr.io/kuberoot-dev/kubepkg-packages/kube-state-metrics, name: kube-state-metrics, version: 2.20.0-3, digest: "sha256:2bf8279f5f6195dfb6332dfb8c1251bdcf5a00754dd97102411a614f685d329e"}
           install: {namespace: ${NS}, releaseName: slow-ksm}
 ---
 apiVersion: kubepkg.dev/v1

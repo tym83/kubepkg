@@ -24,9 +24,9 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/tym83/kubepkg/pkg/cli"
-	"github.com/tym83/kubepkg/pkg/operator"
-	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/cli"
+	"github.com/kuberoot-dev/kubepkg/pkg/operator"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
 )
 
 // allowedRegistries admits only versions whose charts come from the

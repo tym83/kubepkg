@@ -20,7 +20,7 @@ Packages come from the cluster's repositories, or from `--repo` indexes when you
 
 ```bash
 kubepkg render virtualization --format argo \
-  --repo https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub
+  --repo https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml --public-key index.pub
 ```
 
 ```text

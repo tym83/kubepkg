@@ -40,13 +40,13 @@ import (
 	"oras.land/oras-go/v2/content/oci"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/build"
-	"github.com/tym83/kubepkg/pkg/images"
-	"github.com/tym83/kubepkg/pkg/repo"
-	"github.com/tym83/kubepkg/pkg/sbom"
-	"github.com/tym83/kubepkg/pkg/source"
-	"github.com/tym83/kubepkg/pkg/version"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/build"
+	"github.com/kuberoot-dev/kubepkg/pkg/images"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/sbom"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/version"
 )
 
 // Layout of a bundle directory.

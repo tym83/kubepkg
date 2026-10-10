@@ -14,7 +14,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 : "${HUB_CONTEXT:?}" "${MEMBER_KUBECONFIG:?}" "${MEMBER_CONTEXT:?}" "${IMAGE_TAG:?}"
-INDEX=https://tym83.github.io/kubepkg-recipes/index.yaml
+INDEX=https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml
 WORK=$(mktemp -d)
 NS=kubepkg-system
 K="kubectl --context ${HUB_CONTEXT}"
@@ -50,11 +50,11 @@ wait_for() { # description, seconds, command...
 }
 pkg_ready() { [[ "$($1 get packages.kubepkg.dev "$2" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" == True ]]; }
 
-curl -fsSL https://raw.githubusercontent.com/tym83/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
+curl -fsSL https://raw.githubusercontent.com/kuberoot-dev/kubepkg-recipes/main/keys/index.pub -o "${WORK}/index.pub"
 (cd "${ROOT}" && go build -o bin/ ./cmd/kubepkg)
 
 step "1. kubepkg v0.1.0 with a package"
-${H} upgrade --install kubepkg oci://ghcr.io/tym83/charts/kubepkg --version 0.1.0 -n "${NS}" --create-namespace --wait \
+${H} upgrade --install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg --version 0.1.0 -n "${NS}" --create-namespace --wait \
   --set 'repositories[0].name=main' --set "repositories[0].url=${INDEX}" --set-file 'repositories[0].publicKeys[0]'="${WORK}/index.pub" >/dev/null
 wait_for "repository not loaded" 120 bash -c "${K} get repositories.kubepkg.dev main -o jsonpath='{.status.conditions[0].reason}' | grep -q IndexLoaded"
 "${KP[@]}" install cert-manager --yes >/dev/null

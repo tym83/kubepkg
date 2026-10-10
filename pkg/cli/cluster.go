@@ -31,9 +31,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/repo"
-	"github.com/tym83/kubepkg/pkg/version"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/version"
 )
 
 // Options configure the root command.
@@ -114,9 +114,9 @@ func checkServed(cfg *rest.Config, group string) error {
 			}
 			served = append(served, v.Version)
 		}
-		return fmt.Errorf("the cluster serves %s %s, an older kubepkg; this CLI needs %s/%s: upgrade kubepkg in the cluster (helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg), or use the CLI release that matches it", group, strings.Join(served, ", "), group, v1.Version)
+		return fmt.Errorf("the cluster serves %s %s, an older kubepkg; this CLI needs %s/%s: upgrade kubepkg in the cluster (helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg), or use the CLI release that matches it", group, strings.Join(served, ", "), group, v1.Version)
 	}
-	return fmt.Errorf("the cluster does not serve %s: kubepkg is not installed there (helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace)", group)
+	return fmt.Errorf("the cluster does not serve %s: kubepkg is not installed there (helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --create-namespace)", group)
 }
 
 // NewRootCommand returns the root command with every kubepkg command.

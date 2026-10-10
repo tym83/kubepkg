@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
 )
 
 func TestChartPreparerMirrorKeepsTheDigest(t *testing.T) {

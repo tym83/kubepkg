@@ -1,4 +1,4 @@
-$ kubepkg scan virtualization --repo https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub
+$ kubepkg scan virtualization --repo https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml --public-key index.pub
 PACKAGE   IMAGE                                             CRITICAL  HIGH  MEDIUM  LOW  UNKNOWN
 cdi       quay.io/kubevirt/cdi-apiserver:v1.66.1            1         21    12      1    0
 cdi       quay.io/kubevirt/cdi-cloner:v1.66.1               1         21    12      1    0

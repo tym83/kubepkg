@@ -331,6 +331,7 @@ kubepkg repo index <dir> [flags]
       --merge string           published index (file or URL) whose versions are kept; published versions must not change
   -o, --output string          where to write the index, - for stdout (default "index.yaml")
       --plain-http             talk to OCI registries without TLS (local registries only)
+      --relocate old=new       oci://old=oci://new: move published versions' charts and package trees to a new registry path; each chart must be there with its published digest (repeatable)
       --sign-key stringArray   sign the index with this ed25519 private key file (repeatable); signatures go next to it as .sig
       --sign-key-env string    also sign with the PEM private key in this environment variable, for CI secrets
       --verify                 also download pinned charts and check their digests

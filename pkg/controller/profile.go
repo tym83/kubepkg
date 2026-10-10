@@ -17,7 +17,7 @@ limitations under the License.
 package controller
 
 import (
-	"github.com/tym83/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
 )
 
 // Profile holds the settings a platform changes to embed kubepkg. The

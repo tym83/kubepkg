@@ -17,14 +17,17 @@ limitations under the License.
 package repo
 
 import (
+	"fmt"
+
 	"bytes"
 	"context"
+	v1 "github.com/kuberoot-dev/kubepkg/api/v1"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 type fakeCharts struct{ fetched []string }
@@ -212,5 +215,69 @@ func TestBuildMergesWithPublishedIndex(t *testing.T) {
 	write(t, changed, "a.yaml", recipe("1.3.0", "sha256:"+strings.Repeat("c", 64)))
 	if _, err := Build(context.Background(), changed, &fakeCharts{}, BuildOptions{Base: base}); err == nil || !strings.Contains(err.Error(), "new build number") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// chartsAt knows which charts are where, by repository/name and digest.
+type chartsAt map[string]string
+
+func (c chartsAt) FetchChart(_ context.Context, ch source.Chart) (string, string, error) {
+	d, ok := c[ch.Repository+"/"+ch.Name]
+	if !ok {
+		return "", "", fmt.Errorf("%s/%s: not found", ch.Repository, ch.Name)
+	}
+	if ch.Digest != "" && ch.Digest != d {
+		return "", "", fmt.Errorf("%s/%s has digest %s", ch.Repository, ch.Name, d)
+	}
+	return "", d, nil
+}
+
+func TestRelocateMovesPublishedVersionsToANewRegistry(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	tree := "oci://ghcr.io/old/packages/tree@sha256:" + strings.Repeat("b", 64)
+	published := func(repo string) *Index {
+		spec := v1.PackageSourceSpec{Version: "1.0.0", Build: 1,
+			SourceRef: &v1.PackageSourceRef{Kind: v1.SourceKindOCIArtifact, URL: tree},
+			Variants: []v1.Variant{{Name: "default", Components: []v1.Component{
+				{Name: "app", Chart: &v1.ChartRef{Repository: repo, Name: "app", Version: "1.0.0-1", Digest: digest}, Install: &v1.ComponentInstall{Namespace: "app"}},
+				{Name: "tree", Path: "tree", Install: &v1.ComponentInstall{Namespace: "app"}},
+			}}}}
+		d, _ := SpecDigest(spec)
+		return &Index{Packages: map[string]Package{"app": {Versions: []Version{{Version: "1.0.0", Build: 1, Digest: d, Spec: spec}}}}}
+	}
+	base := published("oci://ghcr.io/old/packages/app")
+	moves := map[string]string{"oci://ghcr.io/old/packages": "oci://ghcr.io/new/packages"}
+	dir := t.TempDir()
+
+	// The chart is at its new place with the same digest: relocated.
+	idx, err := Build(context.Background(), dir, chartsAt{"oci://ghcr.io/new/packages/app/app": digest}, BuildOptions{Base: base, Relocate: moves})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := idx.Packages["app"].Versions[0]
+	if v.Spec.Variants[0].Components[0].Chart.Repository != "oci://ghcr.io/new/packages/app" || v.Spec.SourceRef.URL != "oci://ghcr.io/new/packages/tree@sha256:"+strings.Repeat("b", 64) {
+		t.Fatalf("not relocated: %+v", v.Spec)
+	}
+	if want, _ := SpecDigest(published("oci://ghcr.io/new/packages/app").Packages["app"].Versions[0].Spec); v.Digest == base.Packages["app"].Versions[0].Digest {
+		t.Fatalf("digest kept after relocation (want a new one like %s)", want)
+	}
+	// A rebuilt recipe publishing to the new place now matches the base.
+	// Missing, or different content there: refused.
+	for name, at := range map[string]chartsAt{
+		"missing":   {},
+		"different": {"oci://ghcr.io/new/packages/app/app": "sha256:" + strings.Repeat("c", 64)},
+	} {
+		if _, err := Build(context.Background(), dir, at, BuildOptions{Base: published("oci://ghcr.io/old/packages/app"), Relocate: moves}); err == nil {
+			t.Errorf("%s chart at the new place was accepted", name)
+		}
+	}
+	// A path that only shares a prefix is not moved.
+	other := published("oci://ghcr.io/old/packages-extra/app")
+	idx, err = Build(context.Background(), dir, chartsAt{}, BuildOptions{Base: other, Relocate: moves})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := idx.Packages["app"].Versions[0].Spec.Variants[0].Components[0].Chart.Repository; got != "oci://ghcr.io/old/packages-extra/app" {
+		t.Fatalf("moved by a bare prefix: %s", got)
 	}
 }

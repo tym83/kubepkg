@@ -26,8 +26,8 @@ import (
 
 	"helm.sh/helm/v4/pkg/provenance"
 
-	"github.com/tym83/kubepkg/pkg/images"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/pkg/images"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 // ImageVerifier checks that image carries the signature rule describes.

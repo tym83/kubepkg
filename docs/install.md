@@ -7,7 +7,7 @@ kubepkg has two parts. The **operator** runs in the cluster and installs package
 The operator ships as a Helm chart in an OCI registry:
 
 ```bash
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg \
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg \
   --namespace kubepkg-system --create-namespace --wait
 ```
 
@@ -33,7 +33,7 @@ The backend decides how the operator installs each component of a package. You c
 | `argo` | Argo CD `Application`s | no, recovery is a forward fix | Argo CD |
 
 ```bash
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace \
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --create-namespace \
   --set backend=flux --set clusterAdmin=false
 ```
 
@@ -64,7 +64,7 @@ Some settings belong to the platform rather than to one package, such as a domai
 ```bash
 kubectl -n kubepkg-system create secret generic platform-values \
   --from-literal=values.yaml='global: {domain: example.org}'
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reuse-values \
+helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --reuse-values \
   --set valuesSecret=kubepkg-system/platform-values
 ```
 
@@ -73,7 +73,7 @@ The Secret's `values.yaml` goes underneath every component's values. Both the pa
 ### High availability
 
 ```bash
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reuse-values --set replicas=2
+helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --reuse-values --set replicas=2
 ```
 
 Replicas elect a leader through a `Lease`. If the leader dies, another replica takes over within about fifteen seconds and continues from what the cluster records. A revision that was being applied is resumed from the next component that was not yet ready.
@@ -86,8 +86,8 @@ Each release publishes binaries for Linux and macOS on amd64 and arm64, with a `
 
 ```bash
 os=$(uname -s | tr A-Z a-z); arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-curl -fsSLO "https://github.com/tym83/kubepkg/releases/latest/download/kubepkg-${os}-${arch}"
-curl -fsSL https://github.com/tym83/kubepkg/releases/latest/download/SHA256SUMS | grep "kubepkg-${os}-${arch}" | shasum -a 256 -c -
+curl -fsSLO "https://github.com/kuberoot-dev/kubepkg/releases/latest/download/kubepkg-${os}-${arch}"
+curl -fsSL https://github.com/kuberoot-dev/kubepkg/releases/latest/download/SHA256SUMS | grep "kubepkg-${os}-${arch}" | shasum -a 256 -c -
 install -m 0755 "kubepkg-${os}-${arch}" /usr/local/bin/kubepkg
 kubepkg version
 ```
@@ -95,7 +95,7 @@ kubepkg version
 Or build it from source with Go:
 
 ```bash
-go install github.com/tym83/kubepkg/cmd/kubepkg@latest
+go install github.com/kuberoot-dev/kubepkg/cmd/kubepkg@latest
 ```
 
 The CLI uses your kubeconfig. `--context` selects a context, and `--api-group` must match the operator's when a platform serves the types under its own group.
@@ -103,7 +103,7 @@ The CLI uses your kubeconfig. `--context` selects a context, and `--api-group` m
 ## Upgrading kubepkg
 
 ```bash
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reset-then-reuse-values --version <new>
+helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --reset-then-reuse-values --version <new>
 ```
 
 `--reset-then-reuse-values` (Helm 3.14 and newer) keeps your settings and takes the new chart's defaults for settings it adds. Plain `--reuse-values` also works: every setting the chart has added since v0.1.0 has its default in the templates too, and CI renders the chart with the values of every earlier release to keep it that way.

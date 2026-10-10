@@ -5,7 +5,7 @@ A repository's signed index pins every chart and, once recipes list them, every 
 ## Bills of materials
 
 ```bash
-kubepkg sbom virtualization --repo https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub -o virtualization.cdx.json
+kubepkg sbom virtualization --repo https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml --public-key index.pub -o virtualization.cdx.json
 kubepkg sbom --cluster -o cluster.cdx.json
 ```
 
@@ -25,7 +25,7 @@ Any tool that reads CycloneDX accepts these documents, for example Dependency-Tr
 ## Vulnerability reports
 
 ```bash
-kubepkg scan virtualization --repo https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub
+kubepkg scan virtualization --repo https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml --public-key index.pub
 kubepkg scan --cluster --fail-on critical
 ```
 
@@ -46,7 +46,7 @@ kubepkg does not scan anything itself and keeps no vulnerability data: it knows 
 The signed index says which image digests a package runs. With the image policy on, the cluster holds pods to it:
 
 ```bash
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reset-then-reuse-values \
+helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --reset-then-reuse-values \
   --set imagePolicy=enforce        # or warn
 ```
 

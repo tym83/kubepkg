@@ -1,8 +1,8 @@
 site_name: kubepkg
 site_description: A package manager for Kubernetes clusters and the distributions built on them
-site_url: https://tym83.github.io/kubepkg/
-repo_url: https://github.com/tym83/kubepkg
-repo_name: tym83/kubepkg
+site_url: https://kuberoot-dev.github.io/kubepkg/
+repo_url: https://github.com/kuberoot-dev/kubepkg
+repo_name: kuberoot-dev/kubepkg
 edit_uri: edit/main/docs/
 copyright: Licensed under the Apache License 2.0
 

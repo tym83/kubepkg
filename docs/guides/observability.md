@@ -9,7 +9,7 @@ The operator exports Prometheus metrics. The chart can add a ServiceMonitor, ale
 With the Prometheus Operator, or anything that understands its CRDs, such as kube-prometheus-stack or VictoriaMetrics:
 
 ```bash
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reuse-values \
+helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --reuse-values \
   --set metrics.serviceMonitor.enabled=true \
   --set metrics.prometheusRule.enabled=true \
   --set metrics.dashboard.enabled=true

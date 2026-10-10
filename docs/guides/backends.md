@@ -14,7 +14,7 @@ The operator decides *what* to install and in which order. A **backend** does th
 Choose one per installation:
 
 ```bash
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace \
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --create-namespace \
   --set backend=werf
 ```
 
@@ -46,7 +46,7 @@ With `backend: flux`, each component becomes a Flux source and a `HelmRelease`:
 The operator waits for each `HelmRelease` to be ready before writing the next one. Uninstalling a component deletes both objects, and Flux removes what it deployed. Only Flux's source and helm controllers are needed. The operator runs without cluster-admin, because Flux applies the manifests.
 
 ```bash
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace \
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --create-namespace \
   --set backend=flux --set clusterAdmin=false
 ```
 
@@ -61,7 +61,7 @@ Limitations:
 With `backend: argo`, each component becomes an automatically synced Argo CD `Application` in `argo.namespace` (default `argocd`) and `argo.project`:
 
 ```bash
-helm install kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --create-namespace \
+helm install kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --create-namespace \
   --set backend=argo --set clusterAdmin=false \
   --set argo.namespace=argocd --set argo.project=default
 ```

@@ -24,8 +24,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/sbom"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/sbom"
 )
 
 // fakeTrivy writes a trivy that logs what it scans and reports two

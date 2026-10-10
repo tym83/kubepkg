@@ -16,7 +16,7 @@ limitations under the License.
 
 // Package version holds the kubepkg version, set at build time:
 //
-//	go build -ldflags "-X github.com/tym83/kubepkg/pkg/version.Version=v0.1.0"
+//	go build -ldflags "-X github.com/kuberoot-dev/kubepkg/pkg/version.Version=v0.1.0"
 package version
 
 // Version is the release the binaries were built from; dev otherwise.

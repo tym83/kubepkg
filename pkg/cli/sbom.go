@@ -28,11 +28,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/bundle"
-	"github.com/tym83/kubepkg/pkg/controller"
-	"github.com/tym83/kubepkg/pkg/sbom"
-	"github.com/tym83/kubepkg/pkg/version"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/bundle"
+	"github.com/kuberoot-dev/kubepkg/pkg/controller"
+	"github.com/kuberoot-dev/kubepkg/pkg/sbom"
+	"github.com/kuberoot-dev/kubepkg/pkg/version"
 )
 
 func sbomCmd(cl *cluster) *cobra.Command {

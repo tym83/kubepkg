@@ -9,7 +9,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags "-s -w -X github.com/tym83/kubepkg/pkg/version.Version=${VERSION}" \
+    go build -trimpath -ldflags "-s -w -X github.com/kuberoot-dev/kubepkg/pkg/version.Version=${VERSION}" \
     -o /out/kubepkg-operator ./cmd/kubepkg-operator
 
 # nelm, werf's deployment engine, for the werf backend; pinned by checksum.

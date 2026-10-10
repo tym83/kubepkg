@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tym83/kubepkg/pkg/cli"
+	"github.com/kuberoot-dev/kubepkg/pkg/cli"
 )
 
 func main() {

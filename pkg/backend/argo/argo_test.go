@@ -29,7 +29,7 @@ import (
 	kfake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/tym83/kubepkg/pkg/backend"
+	"github.com/kuberoot-dev/kubepkg/pkg/backend"
 )
 
 func component() backend.Component {

@@ -29,8 +29,8 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"helm.sh/helm/v4/pkg/provenance"
 
-	"github.com/tym83/kubepkg/api/v1"
-	"github.com/tym83/kubepkg/pkg/source"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/pkg/source"
 )
 
 // gpgKey writes a private and a public keyring for one new key.

@@ -216,10 +216,10 @@ Plugins must be deterministic. A plugin that fetches "latest" or stamps the time
 
 ## A repository of recipes in CI
 
-[tym83/kubepkg-recipes](https://github.com/tym83/kubepkg-recipes) is a complete example:
+[kuberoot-dev/kubepkg-recipes](https://github.com/kuberoot-dev/kubepkg-recipes) is a complete example:
 
 - `recipes/<name>/recipe.yaml` for each package;
 - on every pull request, `kubepkg validate` runs for every recipe;
-- on every merge, `scripts/build-all.sh` builds every recipe into `ghcr.io/tym83/kubepkg-packages`, merges the index with the published one, signs it with a key from a repository secret, and publishes it to GitHub Pages.
+- on every merge, `scripts/build-all.sh` builds every recipe into `ghcr.io/kuberoot-dev/kubepkg-packages`, merges the index with the published one, signs it with a key from a repository secret, and publishes it to GitHub Pages.
 
 Fork it, point `REGISTRY` at your registry, generate a key with `kubepkg repo keygen`, store the private key as the `KUBEPKG_SIGNING_KEY` secret, and you have a package repository.

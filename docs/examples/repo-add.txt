@@ -1,5 +1,5 @@
-$ kubepkg repo add main https://tym83.github.io/kubepkg-recipes/index.yaml --public-key index.pub
+$ kubepkg repo add main https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml --public-key index.pub
 repository main added
 $ kubepkg repo list
 NAME  PRIORITY  PACKAGES  READY  URL
-main  0         6         True   https://tym83.github.io/kubepkg-recipes/index.yaml
+main  0         6         True   https://kuberoot-dev.github.io/kubepkg-recipes/index.yaml

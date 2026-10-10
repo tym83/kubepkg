@@ -33,7 +33,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/api/v1"
+	"github.com/kuberoot-dev/kubepkg/api/v1"
 )
 
 // Roles a root delegates.

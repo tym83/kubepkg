@@ -31,8 +31,8 @@ import (
 	"helm.sh/helm/v4/pkg/engine"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/pkg/images"
-	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/images"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
 )
 
 // Report is what Validate found. Errors make a recipe unfit to publish;

@@ -81,7 +81,7 @@ kubepkg repo index dist -o site/index.yaml \
 - every chart is pinned by digest. Charts without one are downloaded and pinned in the index, and `--verify` downloads pinned charts again to check them;
 - with `--merge`, versions published before are kept even when their recipes are gone. A version rebuilt under the same version and build must come out identical: **published versions never change**. A changed recipe needs a new build number.
 
-The repository in [tym83/kubepkg-recipes](https://github.com/tym83/kubepkg-recipes) does exactly this from GitHub Actions. Copy its `scripts/build-all.sh` and workflow as a starting point.
+The repository in [kuberoot-dev/kubepkg-recipes](https://github.com/kuberoot-dev/kubepkg-recipes) does exactly this from GitHub Actions. Copy its `scripts/build-all.sh` and workflow as a starting point.
 
 ## Signing with plain keys
 
@@ -200,6 +200,17 @@ Clients older than 0.5 cannot read a root with delegations and refuse it. Upgrad
 
 Index expiry forces CI to re-sign the index regularly, even when nothing changed. That is the point. A mirror or a man in the middle that keeps serving an old, validly signed index is caught within the expiry period. Choose `--expires` longer than your longest expected outage of the build pipeline: a month is common. The chart's alert `KubepkgRepositoryStale` fires when an index has not changed for longer than `metrics.prometheusRule.indexMaxAge`. Set that below the expiry, and you hear about a stuck pipeline before clusters start refusing its index.
 
+### Moving to another registry
+
+Published versions never change, but the place their charts live may. To move a repository's packages to another registry path, copy the artifacts there unchanged, digests included (`oras cp`), and index with `--relocate`:
+
+```bash
+kubepkg repo index dist --merge https://old.example.org/index.yaml \
+  --relocate oci://registry.old.example.org/packages=oci://registry.example.org/packages
+```
+
+Every chart of a relocated version is fetched from its new place and must have the digest it was published with, so what the version installs stays the same. Its spec digest changes with the location, and clusters apply that as a new revision with the same charts, which changes nothing in their workloads. Versions signed by a delegation need signing again. The old artifacts can stay where they are for clusters that have not refreshed yet.
+
 ## Private registries
 
 Charts and package trees in a registry that needs a login are pulled with credentials from `kubernetes.io/dockerconfigjson` Secrets in the cluster:
@@ -207,7 +218,7 @@ Charts and package trees in a registry that needs a login are pulled with creden
 ```bash
 kubectl -n kubepkg-system create secret docker-registry registry-creds \
   --docker-server=registry.example.org --docker-username=bot --docker-password="$TOKEN"
-helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reset-then-reuse-values \
+helm upgrade kubepkg oci://ghcr.io/kuberoot-dev/charts/kubepkg -n kubepkg-system --reset-then-reuse-values \
   --set 'registrySecrets={registry-creds}'
 ```
 

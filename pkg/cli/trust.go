@@ -28,7 +28,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/tym83/kubepkg/pkg/repo"
+	"github.com/kuberoot-dev/kubepkg/pkg/repo"
 )
 
 func trustCmd() *cobra.Command {
