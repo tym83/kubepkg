@@ -146,6 +146,7 @@ index.yaml; packages and charts stay in their registries.`,
 	cmd.Flags().BoolVar(&opts.Verify, "verify", false, "also download pinned charts and check their digests")
 	cmd.Flags().StringVar(&merge, "merge", "", "published index (file or URL) whose versions are kept; published versions must not change")
 	cmd.Flags().BoolVar(&plainHTTP, "plain-http", false, "talk to OCI registries without TLS (local registries only)")
+	cmd.Flags().Var(relocateFlag{&opts.Relocate}, "relocate", "oci://old=oci://new: move published versions' charts and package trees to a new registry path; each chart must be there with its published digest (repeatable)")
 	cmd.Flags().StringArrayVar(&signKeys, "sign-key", nil, "sign the index with this ed25519 private key file (repeatable); signatures go next to it as .sig")
 	cmd.Flags().StringVar(&signKeyEnv, "sign-key-env", "", "also sign with the PEM private key in this environment variable, for CI secrets")
 	cmd.Flags().DurationVar(&expires, "expires", 0, "how long clients accept the index; required by repositories with a root (e.g. 720h)")
@@ -220,4 +221,22 @@ func readBaseIndex(ctx context.Context, from string) (*repo.Index, error) {
 		return nil, err
 	}
 	return repo.Parse(raw)
+}
+
+// relocateFlag collects --relocate old=new pairs.
+type relocateFlag struct{ m *map[string]string }
+
+func (f relocateFlag) String() string { return "" }
+func (f relocateFlag) Type() string   { return "old=new" }
+
+func (f relocateFlag) Set(v string) error {
+	from, to, ok := strings.Cut(v, "=")
+	if !ok || !strings.HasPrefix(from, "oci://") || !strings.HasPrefix(to, "oci://") {
+		return fmt.Errorf("want oci://old=oci://new, got %q", v)
+	}
+	if *f.m == nil {
+		*f.m = map[string]string{}
+	}
+	(*f.m)[strings.TrimSuffix(from, "/")] = strings.TrimSuffix(to, "/")
+	return nil
 }

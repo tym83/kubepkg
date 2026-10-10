@@ -133,6 +133,13 @@ type BuildOptions struct {
 	// version rebuilt with the same number must not change: published
 	// versions are immutable, a changed recipe needs a new build.
 	Base *Index
+	// Relocate moves the charts and package trees of published versions
+	// from one registry path to another, oci://old=oci://new by prefix,
+	// when a repository moves registries. Only the location changes: each
+	// relocated chart is fetched from its new place and must have the
+	// digest it was published with, so what a version installs stays the
+	// same; its spec digest changes with the location.
+	Relocate map[string]string
 }
 
 // Build reads every PackageSource in the YAML files under dir and returns
@@ -154,6 +161,11 @@ func Build(ctx context.Context, dir string, charts ChartFetcher, opts BuildOptio
 	if opts.Base != nil {
 		for name, p := range opts.Base.Packages {
 			p.Versions = append([]Version(nil), p.Versions...)
+			for i := range p.Versions {
+				if err := relocate(ctx, name, &p.Versions[i], opts.Relocate, charts); err != nil {
+					return nil, err
+				}
+			}
 			idx.Packages[name] = p
 			for _, v := range p.Versions {
 				published[fmt.Sprintf("%s@%s build %d", name, v.Version, v.Build)] = v.Digest
@@ -215,6 +227,59 @@ func Build(ctx context.Context, dir string, charts ChartFetcher, opts BuildOptio
 		idx.Packages[name] = p
 	}
 	return idx, nil
+}
+
+// relocate moves a published version's charts and package tree to their
+// new registry path and recomputes its digest; see BuildOptions.Relocate.
+func relocate(ctx context.Context, name string, v *Version, moves map[string]string, charts ChartFetcher) error {
+	if len(moves) == 0 {
+		return nil
+	}
+	move := func(u string) (string, bool) {
+		for from, to := range moves {
+			if rest, ok := strings.CutPrefix(u, from); ok && (rest == "" || rest[0] == '/' || rest[0] == '@' || rest[0] == ':') {
+				return to + rest, true
+			}
+		}
+		return u, false
+	}
+	moved := false
+	for vi := range v.Spec.Variants {
+		for ci := range v.Spec.Variants[vi].Components {
+			ch := v.Spec.Variants[vi].Components[ci].Chart
+			if ch == nil {
+				continue
+			}
+			to, ok := move(ch.Repository)
+			if !ok {
+				continue
+			}
+			if charts == nil {
+				return fmt.Errorf("%s %s build %d: relocating needs to fetch the charts", name, v.Version, v.Build)
+			}
+			if _, _, err := charts.FetchChart(ctx, source.Chart{Repository: to, Name: ch.Name, Version: ch.Version, Digest: ch.Digest}); err != nil {
+				return fmt.Errorf("%s %s build %d: chart %s is not at %s as published: %w", name, v.Version, v.Build, ch.Name, to, err)
+			}
+			ch.Repository, moved = to, true
+		}
+	}
+	if ref := v.Spec.SourceRef; ref != nil {
+		if to, ok := move(ref.URL); ok {
+			ref.URL, moved = to, true
+		}
+	}
+	if !moved {
+		return nil
+	}
+	if len(v.Signatures) > 0 {
+		return fmt.Errorf("%s %s build %d is signed by its delegation; relocating changes its digest, so it needs signing again", name, v.Version, v.Build)
+	}
+	d, err := SpecDigest(v.Spec)
+	if err != nil {
+		return err
+	}
+	v.Digest = d
+	return nil
 }
 
 // sourceSignatures reads the signatures a PackageSource carries.
