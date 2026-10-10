@@ -18,6 +18,8 @@ package backend
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -60,5 +62,39 @@ func TestValuesMissingSecretFails(t *testing.T) {
 	_, err := ResolveValues(context.Background(), secrets, Component{Namespace: "app", ValuesFromSecrets: []string{"kubepkg-system/platform"}})
 	if err == nil {
 		t.Fatal("a missing values secret must fail the release, not install it unconfigured")
+	}
+}
+
+func TestPlatformValuesFollowAStrictSchema(t *testing.T) {
+	sec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: "kubepkg-system", Name: "platform"},
+		Data: map[string][]byte{"values.yaml": []byte("linstorNode: {systemd: false}\nglobal: {domain: example.org}\nx-trace: true\n")}}
+	cs := fake.NewClientset(sec)
+	resolve := func(schema string) map[string]any {
+		dir := t.TempDir()
+		if schema != "" {
+			if err := os.WriteFile(filepath.Join(dir, "values.schema.json"), []byte(schema), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		c := Component{Namespace: "app", ChartDir: dir, ValuesFromSecrets: []string{"kubepkg-system/platform"}, Values: map[string]any{"replicas": 2}}
+		v, err := ResolveValues(context.Background(), cs, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	strict := resolve(`{"type": "object", "additionalProperties": false, "properties": {"global": {}, "replicas": {}}, "patternProperties": {"^x-": {}}}`)
+	if _, ok := strict["linstorNode"]; ok {
+		t.Error("a key the strict schema does not know was passed")
+	}
+	for _, k := range []string{"global", "x-trace", "replicas"} {
+		if _, ok := strict[k]; !ok {
+			t.Errorf("%s was dropped", k)
+		}
+	}
+	for _, schema := range []string{"", `{"type": "object"}`, `{"additionalProperties": true}`} {
+		if _, ok := resolve(schema)["linstorNode"]; !ok {
+			t.Errorf("schema %q: platform values were filtered without a strict schema", schema)
+		}
 	}
 }

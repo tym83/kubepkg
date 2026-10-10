@@ -104,7 +104,7 @@ helm upgrade kubepkg oci://ghcr.io/tym83/charts/kubepkg -n kubepkg-system --reus
   --set valuesSecret=kubepkg-system/platform-values
 ```
 
-Charts read the values as usual (`.Values.global.domain`). Package defaults and user values override them. Keys a chart does not know are ignored by almost every chart, so keep platform values under a key such as `global` that no chart uses for something else. A hand-written `PackageSource` can opt out entirely with the annotation `kubepkg.dev/skip-platform-values: "true"`.
+Charts read the values as usual (`.Values.global.domain`). Package defaults and user values override them. Keys a chart does not know are ignored by almost every chart, so keep platform values under a key such as `global` that no chart uses for something else. The exceptions are charts whose `values.schema.json` forbids unknown keys (`additionalProperties: false`). With the helm and werf backends, such a chart gets only the platform keys its schema declares, and is installed unmodified. Flux and Argo CD merge values themselves, so a strict chart there needs the annotation below. A hand-written `PackageSource` can opt out entirely with the annotation `kubepkg.dev/skip-platform-values: "true"`.
 
 ## 4. Shipping it
 
